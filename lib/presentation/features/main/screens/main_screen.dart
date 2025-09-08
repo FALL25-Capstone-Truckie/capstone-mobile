@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/services/service_locator.dart';
+import '../../../../core/services/system_ui_service.dart';
 import '../../account/screens/account_screen.dart';
 import '../../auth/viewmodels/auth_viewmodel.dart';
 import '../../home/screens/home_screen.dart';
@@ -69,26 +70,47 @@ class _MainScreenState extends State<MainScreen> {
 
           // Show the main screen with bottom navigation
           return Scaffold(
-            body: IndexedStack(index: _selectedIndex, children: _screens),
-            bottomNavigationBar: BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              selectedItemColor: AppColors.primary,
-              unselectedItemColor: AppColors.textSecondary,
-              onTap: _onItemTapped,
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.home),
-                  label: 'Trang chủ',
+            // Sử dụng SafeArea để đảm bảo nội dung không bị che bởi system insets
+            body: SafeArea(
+              // Đặt bottom: false để không tạo padding dưới cùng (vì đã xử lý trong bottomNavigationBar)
+              bottom: false,
+              child: IndexedStack(index: _selectedIndex, children: _screens),
+            ),
+            bottomNavigationBar: Container(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              // Thêm padding dưới cùng để tránh nội dung bị che bởi navigation bar
+              // trên các thiết bị Android cũ
+              child: Padding(
+                padding: SystemUiService.getBottomPadding(context),
+                child: BottomNavigationBar(
+                  currentIndex: _selectedIndex,
+                  selectedItemColor: AppColors.primary,
+                  unselectedItemColor: AppColors.textSecondary,
+                  onTap: _onItemTapped,
+                  items: const [
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.home),
+                      label: 'Trang chủ',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.list_alt),
+                      label: 'Đơn hàng',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.person),
+                      label: 'Tài khoản',
+                    ),
+                  ],
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.list_alt),
-                  label: 'Đơn hàng',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.person),
-                  label: 'Tài khoản',
-                ),
-              ],
+              ),
             ),
           );
         },

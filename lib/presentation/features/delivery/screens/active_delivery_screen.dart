@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/utils/responsive_extensions.dart';
+import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/theme/app_text_styles.dart';
 
@@ -16,73 +18,123 @@ class ActiveDeliveryScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildDeliveryProgress(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildOrderInfo(),
-                    const SizedBox(height: 24),
-                    _buildLocationInfo(),
-                    const SizedBox(height: 24),
-                    _buildCustomerInfo(),
-                    const SizedBox(height: 24),
-                    _buildActionButtons(context),
-                  ],
+      body: ResponsiveLayoutBuilder(
+        builder: (context, sizingInformation) {
+          return Column(
+            children: [
+              _buildDeliveryProgress(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(16.r),
+                  child: sizingInformation.isTablet
+                      ? _buildTabletLayout(context)
+                      : _buildPhoneLayout(context),
                 ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTabletLayout(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildOrderInfo(),
+        SizedBox(height: 24.h),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildLocationInfo(),
+                  SizedBox(height: 24.h),
+                  _buildCustomerInfo(),
+                ],
+              ),
+            ),
+            SizedBox(width: 16.w),
+            Expanded(
+              child: Column(
+                children: [
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(16.r),
+                      child: _buildActionButtons(context),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildOrderInfo(),
+        SizedBox(height: 24.h),
+        _buildLocationInfo(),
+        SizedBox(height: 24.h),
+        _buildCustomerInfo(),
+        SizedBox(height: 24.h),
+        _buildActionButtons(context),
+      ],
     );
   }
 
   Widget _buildDeliveryProgress() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16.r),
       color: AppColors.primary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Đang giao hàng',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 18.sp,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8.h),
           Row(
             children: [
-              const Icon(Icons.access_time, color: Colors.white, size: 16),
-              const SizedBox(width: 8),
-              const Text(
+              Icon(Icons.access_time, color: Colors.white, size: 16.r),
+              SizedBox(width: 8.w),
+              Text(
                 'Thời gian còn lại: 15 phút',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: Colors.white, fontSize: 14.sp),
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(16.r),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.location_on, color: Colors.white, size: 12),
-                    SizedBox(width: 4),
+                    Icon(Icons.location_on, color: Colors.white, size: 12.r),
+                    SizedBox(width: 4.w),
                     Text(
                       '2.5 km',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -91,31 +143,31 @@ class ActiveDeliveryScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           const LinearProgressIndicator(
             value: 0.7,
             backgroundColor: Colors.white30,
             color: Colors.white,
           ),
-          const SizedBox(height: 8),
-          const Row(
+          SizedBox(height: 8.h),
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Đã lấy hàng',
-                style: TextStyle(color: Colors.white, fontSize: 12),
+                style: TextStyle(color: Colors.white, fontSize: 12.sp),
               ),
               Text(
                 'Đang giao',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 12.sp,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               Text(
                 'Đã giao hàng',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(color: Colors.white70, fontSize: 12.sp),
               ),
             ],
           ),
@@ -127,9 +179,9 @@ class ActiveDeliveryScreen extends StatelessWidget {
   Widget _buildOrderInfo() {
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16.r),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -138,47 +190,50 @@ class ActiveDeliveryScreen extends StatelessWidget {
               children: [
                 Text('Mã đơn: #DH001', style: AppTextStyles.titleLarge),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                   decoration: BoxDecoration(
                     color: AppColors.inProgress.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(16.r),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Đang giao',
                     style: TextStyle(
                       color: AppColors.inProgress,
-                      fontSize: 12,
+                      fontSize: 12.sp,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            const Row(
+            SizedBox(height: 8.h),
+            Row(
               children: [
                 Icon(
                   Icons.access_time,
                   color: AppColors.textSecondary,
-                  size: 16,
+                  size: 16.r,
                 ),
-                SizedBox(width: 8),
-                Text('Thời gian lấy hàng: 09:15 - 15/09/2025'),
+                SizedBox(width: 8.w),
+                Text(
+                  'Thời gian lấy hàng: 09:15 - 15/09/2025',
+                  style: TextStyle(fontSize: 14.sp),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
-            const Row(
+            SizedBox(height: 4.h),
+            Row(
               children: [
                 Icon(
                   Icons.local_shipping,
                   color: AppColors.textSecondary,
-                  size: 16,
+                  size: 16.r,
                 ),
-                SizedBox(width: 8),
-                Text('Dự kiến giao: 10:30 - 15/09/2025'),
+                SizedBox(width: 8.w),
+                Text(
+                  'Dự kiến giao: 10:30 - 15/09/2025',
+                  style: TextStyle(fontSize: 14.sp),
+                ),
               ],
             ),
           ],
@@ -192,14 +247,14 @@ class ActiveDeliveryScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Thông tin địa điểm', style: AppTextStyles.headlineSmall),
-        const SizedBox(height: 16),
+        SizedBox(height: 16.h),
         Card(
           elevation: 2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(12.r),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(16.r),
             child: Column(
               children: [
                 _buildLocationItem(
@@ -210,9 +265,9 @@ class ActiveDeliveryScreen extends StatelessWidget {
                   time: '09:00 - 15/09/2025',
                   isCompleted: true,
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Divider(),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.h),
+                  child: const Divider(),
                 ),
                 _buildLocationItem(
                   icon: Icons.flag,
@@ -241,8 +296,8 @@ class ActiveDeliveryScreen extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: iconColor, size: 24),
-        const SizedBox(width: 12),
+        Icon(icon, color: iconColor, size: 24.r),
+        SizedBox(width: 12.w),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,16 +307,16 @@ class ActiveDeliveryScreen extends StatelessWidget {
                   Text(title, style: AppTextStyles.titleSmall),
                   const Spacer(),
                   if (isCompleted)
-                    const Icon(
+                    Icon(
                       Icons.check_circle,
                       color: AppColors.success,
-                      size: 16,
+                      size: 16.r,
                     ),
                 ],
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: 4.h),
               Text(address, style: AppTextStyles.bodyMedium),
-              const SizedBox(height: 4),
+              SizedBox(height: 4.h),
               Text(time, style: AppTextStyles.bodySmall),
             ],
           ),
@@ -275,14 +330,14 @@ class ActiveDeliveryScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Thông tin khách hàng', style: AppTextStyles.headlineSmall),
-        const SizedBox(height: 16),
+        SizedBox(height: 16.h),
         Card(
           elevation: 2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(12.r),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(16.r),
             child: Column(
               children: [
                 _buildInfoRow(
@@ -290,7 +345,7 @@ class ActiveDeliveryScreen extends StatelessWidget {
                   label: 'Tên khách hàng',
                   value: 'Nguyễn Thị B',
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12.h),
                 _buildInfoRow(
                   icon: Icons.phone,
                   label: 'Số điện thoại',
@@ -313,8 +368,8 @@ class ActiveDeliveryScreen extends StatelessWidget {
   }) {
     return Row(
       children: [
-        Icon(icon, color: AppColors.primary, size: 20),
-        const SizedBox(width: 12),
+        Icon(icon, color: AppColors.primary, size: 20.r),
+        SizedBox(width: 12.w),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,7 +389,7 @@ class ActiveDeliveryScreen extends StatelessWidget {
             onPressed: () {
               // TODO: Gọi điện cho khách hàng
             },
-            icon: const Icon(Icons.call, color: AppColors.primary),
+            icon: Icon(Icons.call, color: AppColors.primary, size: 24.r),
           ),
       ],
     );
@@ -347,40 +402,43 @@ class ActiveDeliveryScreen extends StatelessWidget {
           onPressed: () {
             Navigator.pushNamed(context, '/delivery-map', arguments: 'DH001');
           },
-          icon: const Icon(Icons.map),
+          icon: Icon(Icons.map, size: 20.r),
           label: const Text('Xem bản đồ'),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 48),
+            minimumSize: Size(double.infinity, 48.h),
+            padding: EdgeInsets.symmetric(vertical: 12.h),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12.h),
         ElevatedButton.icon(
           onPressed: () {
             // TODO: Cập nhật trạng thái đơn hàng
             _showCompleteDeliveryDialog(context);
           },
-          icon: const Icon(Icons.check_circle),
+          icon: Icon(Icons.check_circle, size: 20.r),
           label: const Text('Hoàn thành giao hàng'),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.success,
             foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 48),
+            minimumSize: Size(double.infinity, 48.h),
+            padding: EdgeInsets.symmetric(vertical: 12.h),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12.h),
         OutlinedButton.icon(
           onPressed: () {
             // TODO: Báo cáo vấn đề
             _showReportIssueDialog(context);
           },
-          icon: const Icon(Icons.report_problem),
+          icon: Icon(Icons.report_problem, size: 20.r),
           label: const Text('Báo cáo vấn đề'),
           style: OutlinedButton.styleFrom(
             foregroundColor: AppColors.error,
-            side: const BorderSide(color: AppColors.error),
-            minimumSize: const Size(double.infinity, 48),
+            side: BorderSide(color: AppColors.error, width: 1.5.w),
+            minimumSize: Size(double.infinity, 48.h),
+            padding: EdgeInsets.symmetric(vertical: 12.h),
           ),
         ),
       ],
