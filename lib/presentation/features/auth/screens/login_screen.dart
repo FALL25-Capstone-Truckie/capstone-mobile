@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/services/service_locator.dart';
+import '../../../../core/utils/responsive_extensions.dart';
+import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/theme/app_text_styles.dart';
 import '../viewmodels/auth_viewmodel.dart';
@@ -31,31 +33,60 @@ class _LoginScreenState extends State<LoginScreen> {
     return ChangeNotifierProvider(
       create: (_) => getIt<AuthViewModel>(),
       child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(),
-                    const SizedBox(height: 32),
-                    _buildUsernameField(),
-                    const SizedBox(height: 16),
-                    _buildPasswordField(),
-                    const SizedBox(height: 8),
-                    _buildForgotPassword(),
-                    const SizedBox(height: 24),
-                    _buildLoginButton(),
-                  ],
+        body: ResponsiveLayoutBuilder(
+          builder: (context, sizingInformation) {
+            // Tablet layout
+            if (sizingInformation.isTablet) {
+              return Center(
+                child: Container(
+                  constraints: BoxConstraints(maxWidth: 600.w),
+                  child: Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(32.r),
+                      child: _buildLoginForm(),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
+              );
+            }
+            // Phone layout
+            else {
+              return SafeArea(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(24.r),
+                    child: _buildLoginForm(),
+                  ),
+                ),
+              );
+            }
+          },
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoginForm() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildHeader(),
+          SizedBox(height: 32.h),
+          _buildUsernameField(),
+          SizedBox(height: 16.h),
+          _buildPasswordField(),
+          SizedBox(height: 8.h),
+          _buildForgotPassword(),
+          SizedBox(height: 24.h),
+          _buildLoginButton(),
+        ],
       ),
     );
   }
@@ -63,13 +94,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildHeader() {
     return Column(
       children: [
-        Icon(Icons.local_shipping, size: 80, color: AppColors.primary),
-        const SizedBox(height: 16),
+        Icon(Icons.local_shipping, size: 80.r, color: AppColors.primary),
+        SizedBox(height: 16.h),
         Text(
           'Truckie Driver',
           style: AppTextStyles.displayMedium.copyWith(color: AppColors.primary),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8.h),
         Text(
           'Đăng nhập để tiếp tục',
           style: AppTextStyles.bodyLarge.copyWith(
@@ -83,10 +114,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildUsernameField() {
     return TextFormField(
       controller: _usernameController,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Tên đăng nhập',
-        prefixIcon: Icon(Icons.person),
-        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.person, size: 24.r),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
       ),
       keyboardType: TextInputType.text,
       textInputAction: TextInputAction.next,
@@ -104,11 +135,12 @@ class _LoginScreenState extends State<LoginScreen> {
       controller: _passwordController,
       decoration: InputDecoration(
         labelText: 'Mật khẩu',
-        prefixIcon: const Icon(Icons.lock),
-        border: const OutlineInputBorder(),
+        prefixIcon: Icon(Icons.lock, size: 24.r),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
         suffixIcon: IconButton(
           icon: Icon(
             _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+            size: 24.r,
           ),
           onPressed: () {
             setState(() {
@@ -142,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
         },
         child: Text(
           'Quên mật khẩu?',
-          style: TextStyle(color: AppColors.primary),
+          style: TextStyle(color: AppColors.primary, fontSize: 14.sp),
         ),
       ),
     );
@@ -156,18 +188,22 @@ class _LoginScreenState extends State<LoginScreen> {
         return ElevatedButton(
           onPressed: isLoading ? null : () => _handleLogin(authViewModel),
           style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: EdgeInsets.symmetric(vertical: 16.h),
+            minimumSize: Size(double.infinity, 50.h),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.r),
+            ),
           ),
           child: isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
+              ? SizedBox(
+                  height: 20.r,
+                  width: 20.r,
+                  child: const CircularProgressIndicator(
                     color: Colors.white,
                     strokeWidth: 2,
                   ),
                 )
-              : const Text('Đăng nhập', style: TextStyle(fontSize: 16)),
+              : Text('Đăng nhập', style: TextStyle(fontSize: 16.sp)),
         );
       },
     );

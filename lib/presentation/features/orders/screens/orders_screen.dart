@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/services/service_locator.dart';
+import '../../../../core/services/system_ui_service.dart';
+import '../../../../core/utils/responsive_extensions.dart';
+import '../../../../presentation/common_widgets/responsive_grid.dart';
+import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/common_widgets/skeleton_loader.dart';
-import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/theme/app_text_styles.dart';
+import '../../../features/auth/viewmodels/auth_viewmodel.dart';
 
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
@@ -25,22 +29,24 @@ class OrdersScreen extends StatelessWidget {
             final user = authViewModel.user;
             final driver = authViewModel.driver;
 
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFilterSection(),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: user == null || driver == null
-                          ? const OrdersSkeletonList(itemCount: 5)
-                          : _buildOrdersList(),
-                    ),
-                  ],
-                ),
-              ),
+            return ResponsiveLayoutBuilder(
+              builder: (context, sizingInformation) {
+                return Padding(
+                  padding: SystemUiService.getContentPadding(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFilterSection(context),
+                      SizedBox(height: 16.h),
+                      Expanded(
+                        child: user == null || driver == null
+                            ? const OrdersSkeletonList(itemCount: 5)
+                            : _buildOrdersList(context, sizingInformation),
+                      ),
+                    ],
+                  ),
+                );
+              },
             );
           },
         ),
@@ -48,24 +54,24 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterSection() {
+  Widget _buildFilterSection(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Lọc theo trạng thái', style: AppTextStyles.titleMedium),
-        const SizedBox(height: 8),
+        SizedBox(height: 8.h),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
               _buildFilterChip('Tất cả', true),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               _buildFilterChip('Chờ lấy hàng', false),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               _buildFilterChip('Đang giao', false),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               _buildFilterChip('Hoàn thành', false),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               _buildFilterChip('Đã hủy', false),
             ],
           ),
@@ -86,19 +92,41 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildOrdersList() {
-    return ListView.separated(
-      itemCount: 10,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        return _buildOrderItem(
-          orderId: 'DH00${index + 1}',
-          status: _getRandomStatus(index),
-          address: '${index + 100} Nguyễn Văn Linh, Quận 7, TP.HCM',
-          time: '${(index + 8) % 12 + 1}:${index * 10 % 60}',
-        );
-      },
-    );
+  Widget _buildOrdersList(
+    BuildContext context,
+    SizingInformation sizingInformation,
+  ) {
+    // Sử dụng grid layout cho tablet và phone layout cho điện thoại
+    if (sizingInformation.isTablet) {
+      return ResponsiveGrid(
+        smallScreenColumns: 1,
+        mediumScreenColumns: 2,
+        largeScreenColumns: 2,
+        horizontalSpacing: 16.w,
+        verticalSpacing: 16.h,
+        children: List.generate(10, (index) {
+          return _buildOrderItem(
+            orderId: 'DH00${index + 1}',
+            status: _getRandomStatus(index),
+            address: '${index + 100} Nguyễn Văn Linh, Quận 7, TP.HCM',
+            time: '${(index + 8) % 12 + 1}:${index * 10 % 60}',
+          );
+        }),
+      );
+    } else {
+      return ListView.separated(
+        itemCount: 10,
+        separatorBuilder: (context, index) => SizedBox(height: 12.h),
+        itemBuilder: (context, index) {
+          return _buildOrderItem(
+            orderId: 'DH00${index + 1}',
+            status: _getRandomStatus(index),
+            address: '${index + 100} Nguyễn Văn Linh, Quận 7, TP.HCM',
+            time: '${(index + 8) % 12 + 1}:${index * 10 % 60}',
+          );
+        },
+      );
+    }
   }
 
   String _getRandomStatus(int index) {
@@ -131,14 +159,14 @@ class OrdersScreen extends StatelessWidget {
 
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
       child: InkWell(
         onTap: () {
           // TODO: Chuyển đến trang chi tiết đơn hàng
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12.r),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16.r),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -147,48 +175,48 @@ class OrdersScreen extends StatelessWidget {
                 children: [
                   Text('Mã đơn: #$orderId', style: AppTextStyles.titleMedium),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
+                      vertical: 4.h,
                     ),
                     decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(16.r),
                     ),
                     child: Text(
                       status,
                       style: TextStyle(
                         color: statusColor,
-                        fontSize: 12,
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12.h),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.location_on,
                     color: AppColors.textSecondary,
-                    size: 16,
+                    size: 16.r,
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   Expanded(
                     child: Text(address, style: AppTextStyles.bodyMedium),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8.h),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.access_time,
                     color: AppColors.textSecondary,
-                    size: 16,
+                    size: 16.r,
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   Text(time, style: AppTextStyles.bodyMedium),
                 ],
               ),
