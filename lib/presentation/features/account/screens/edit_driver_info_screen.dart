@@ -24,22 +24,35 @@ class EditDriverInfoScreen extends StatefulWidget {
 class _EditDriverInfoScreenState extends State<EditDriverInfoScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  // Use the singleton instances from GetIt
+  late final AuthViewModel _authViewModel;
+  late final AccountViewModel _accountViewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _authViewModel = getIt<AuthViewModel>();
+    _accountViewModel = getIt<AccountViewModel>();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => getIt<AccountViewModel>()),
-        ChangeNotifierProvider(create: (_) => getIt<AuthViewModel>()),
-      ],
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Chỉnh sửa thông tin tài xế'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Chỉnh sửa thông tin tài xế'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
         ),
-        body: Consumer<AccountViewModel>(
+      ),
+      body: MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: _accountViewModel),
+          ChangeNotifierProvider.value(value: _authViewModel),
+        ],
+        child: Consumer<AccountViewModel>(
           builder: (context, viewModel, _) {
             if (viewModel.status == AccountStatus.updating) {
               return const Center(child: CircularProgressIndicator());
@@ -73,9 +86,33 @@ class _EditDriverInfoScreenState extends State<EditDriverInfoScreen> {
                           child: DriverInfoForm(
                             driver: widget.driver,
                             formKey: _formKey,
-                            onUpdateComplete: (success) {
+                            onUpdateComplete: (success) async {
                               if (success) {
-                                Navigator.of(context).pop(true);
+                                // Fetch the updated driver info before navigating back
+                                if (_authViewModel.user != null) {
+                                  // Refresh the driver info in the account view model
+                                  await _accountViewModel.getDriverInfo(
+                                    _authViewModel.user!.id,
+                                  );
+
+                                  // Also refresh the auth view model's driver info
+                                  await _authViewModel.refreshDriverInfo();
+                                }
+
+                                if (mounted) {
+                                  // Show success message
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Cập nhật thông tin thành công',
+                                      ),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  );
+
+                                  // Navigate back with result
+                                  Navigator.of(context).pop(true);
+                                }
                               }
                             },
                           ),

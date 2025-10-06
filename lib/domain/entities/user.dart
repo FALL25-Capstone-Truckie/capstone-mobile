@@ -13,7 +13,7 @@ class User extends Equatable {
   final String status;
   final Role role;
   final String authToken;
-  final String refreshToken;
+  final String? refreshToken;
 
   const User({
     required this.id,
@@ -27,7 +27,7 @@ class User extends Equatable {
     required this.status,
     required this.role,
     required this.authToken,
-    required this.refreshToken,
+    this.refreshToken,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -45,7 +45,7 @@ class User extends Equatable {
           ? Role.fromJson(json['role'])
           : Role(id: '', roleName: '', description: '', isActive: false),
       authToken: json['authToken'] ?? '',
-      refreshToken: json['refreshToken'] ?? '',
+      refreshToken: json['refreshToken'],
     );
   }
 

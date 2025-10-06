@@ -12,6 +12,18 @@ class DriverRepositoryImpl implements DriverRepository {
   DriverRepositoryImpl({required this.dataSource});
 
   @override
+  Future<Either<Failure, Driver>> getDriverInfo() async {
+    try {
+      final driver = await dataSource.getDriverInfo();
+      return Right(driver);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(message: e.message));
+    } catch (e) {
+      return Left(ServerFailure(message: e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, Driver>> getDriverByUserId(String userId) async {
     try {
       final driver = await dataSource.getDriverByUserId(userId);

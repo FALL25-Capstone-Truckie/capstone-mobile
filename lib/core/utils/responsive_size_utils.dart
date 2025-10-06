@@ -35,6 +35,9 @@ class ResponsiveSizeUtils {
   /// Text scale factor
   late double _textScaleFactor;
 
+  /// Default font size if not initialized
+  static const double _defaultFontSize = 14.0;
+
   /// Factory constructor
   factory ResponsiveSizeUtils() {
     _instance ??= ResponsiveSizeUtils._();
@@ -52,17 +55,25 @@ class ResponsiveSizeUtils {
     _statusBarHeight = mediaQuery.padding.top;
     _bottomPadding = mediaQuery.padding.bottom;
     _textScaleFactor = mediaQuery.textScaleFactor;
+
+    // Debug log to confirm initialization
+    debugPrint(
+      'ResponsiveSizeUtils initialized: $_screenWidth x $_screenHeight',
+    );
+    debugPrint('Scale factors: W=$_widthScaleFactor, H=$_heightScaleFactor');
   }
 
   /// Private constructor
   ResponsiveSizeUtils._();
 
+  /// Check if initialized
+  static bool get isInitialized => _instance != null;
+
   /// Get responsive width
   static double getWidth(double width) {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
-      );
+      debugPrint('ResponsiveSizeUtils not initialized. Using default width.');
+      return width;
     }
     return width * _instance!._widthScaleFactor;
   }
@@ -70,9 +81,8 @@ class ResponsiveSizeUtils {
   /// Get responsive height
   static double getHeight(double height) {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
-      );
+      debugPrint('ResponsiveSizeUtils not initialized. Using default height.');
+      return height;
     }
     return height * _instance!._heightScaleFactor;
   }
@@ -80,10 +90,12 @@ class ResponsiveSizeUtils {
   /// Get responsive font size
   static double getFontSize(double fontSize) {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
+      debugPrint(
+        'ResponsiveSizeUtils not initialized. Using default font size.',
       );
+      return fontSize;
     }
+
     // Use the smaller of the two scale factors to ensure text isn't too large on wide devices
     final scaleFactor =
         _instance!._widthScaleFactor < _instance!._heightScaleFactor
@@ -94,15 +106,20 @@ class ResponsiveSizeUtils {
     final dampening = 0.25;
     final adjustedScaleFactor = 1 + ((scaleFactor - 1) * (1 - dampening));
 
-    return fontSize * adjustedScaleFactor;
+    // Ensure font size is never too small
+    final calculatedSize = fontSize * adjustedScaleFactor;
+    final minSize = fontSize * 0.8; // Minimum 80% of original size
+
+    return calculatedSize < minSize ? minSize : calculatedSize;
   }
 
   /// Get screen width
   static double get screenWidth {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
+      debugPrint(
+        'ResponsiveSizeUtils not initialized. Using default screen width.',
       );
+      return 375.0;
     }
     return _instance!._screenWidth;
   }
@@ -110,9 +127,10 @@ class ResponsiveSizeUtils {
   /// Get screen height
   static double get screenHeight {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
+      debugPrint(
+        'ResponsiveSizeUtils not initialized. Using default screen height.',
       );
+      return 812.0;
     }
     return _instance!._screenHeight;
   }
@@ -120,9 +138,10 @@ class ResponsiveSizeUtils {
   /// Get status bar height
   static double get statusBarHeight {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
+      debugPrint(
+        'ResponsiveSizeUtils not initialized. Using default status bar height.',
       );
+      return 24.0;
     }
     return _instance!._statusBarHeight;
   }
@@ -130,9 +149,10 @@ class ResponsiveSizeUtils {
   /// Get bottom padding
   static double get bottomPadding {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
+      debugPrint(
+        'ResponsiveSizeUtils not initialized. Using default bottom padding.',
       );
+      return 0.0;
     }
     return _instance!._bottomPadding;
   }
@@ -140,9 +160,8 @@ class ResponsiveSizeUtils {
   /// Check if device is a phone (smaller screen)
   static bool get isPhone {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
-      );
+      debugPrint('ResponsiveSizeUtils not initialized. Assuming phone.');
+      return true;
     }
     return _instance!._screenWidth < 600;
   }
@@ -150,9 +169,8 @@ class ResponsiveSizeUtils {
   /// Check if device is a tablet (larger screen)
   static bool get isTablet {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
-      );
+      debugPrint('ResponsiveSizeUtils not initialized. Assuming not tablet.');
+      return false;
     }
     return _instance!._screenWidth >= 600;
   }
@@ -164,9 +182,8 @@ class ResponsiveSizeUtils {
     double large = 24.0,
   }) {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
-      );
+      debugPrint('ResponsiveSizeUtils not initialized. Using medium padding.');
+      return EdgeInsets.all(medium);
     }
 
     if (_instance!._screenWidth < 360) {
@@ -185,9 +202,8 @@ class ResponsiveSizeUtils {
     double large = 24.0,
   }) {
     if (_instance == null) {
-      throw Exception(
-        'ResponsiveSizeUtils not initialized. Call init() first.',
-      );
+      debugPrint('ResponsiveSizeUtils not initialized. Using medium spacing.');
+      return medium;
     }
 
     if (_instance!._screenWidth < 360) {

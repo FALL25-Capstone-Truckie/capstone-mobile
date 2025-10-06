@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../../core/services/service_locator.dart';
 import '../../../../../core/utils/responsive_extensions.dart';
 import '../../../../../domain/entities/driver.dart';
 import '../../../../../presentation/theme/app_colors.dart';
@@ -41,10 +42,16 @@ class _DriverInfoFormState extends State<DriverInfoForm> {
 
   bool _isLoading = false;
 
+  // Use the singleton instances from GetIt
+  late final AuthViewModel _authViewModel;
+  late final AccountViewModel _accountViewModel;
+
   @override
   void initState() {
     super.initState();
     _initializeFormValues();
+    _authViewModel = getIt<AuthViewModel>();
+    _accountViewModel = getIt<AccountViewModel>();
   }
 
   void _initializeFormValues() {
@@ -73,30 +80,26 @@ class _DriverInfoFormState extends State<DriverInfoForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AccountViewModel>(
-      builder: (context, viewModel, _) {
-        return Form(
-          key: widget.formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildPersonalInfoSection(),
-              SizedBox(height: 24.h),
-              _buildLicenseInfoSection(),
-              SizedBox(height: 32.h),
-              _buildSubmitButton(viewModel),
-              if (viewModel.status == AccountStatus.updateError) ...[
-                SizedBox(height: 16.h),
-                Text(
-                  viewModel.errorMessage,
-                  style: TextStyle(color: AppColors.error, fontSize: 14.sp),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ],
-          ),
-        );
-      },
+    return Form(
+      key: widget.formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildPersonalInfoSection(),
+          SizedBox(height: 24.h),
+          _buildLicenseInfoSection(),
+          SizedBox(height: 32.h),
+          _buildSubmitButton(),
+          if (_accountViewModel.status == AccountStatus.updateError) ...[
+            SizedBox(height: 16.h),
+            Text(
+              _accountViewModel.errorMessage,
+              style: TextStyle(color: AppColors.error, fontSize: 14.sp),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -224,10 +227,12 @@ class _DriverInfoFormState extends State<DriverInfoForm> {
   }
 
   /// Xây dựng nút cập nhật thông tin
-  Widget _buildSubmitButton(AccountViewModel viewModel) {
+  Widget _buildSubmitButton() {
     return ElevatedButton(
-      onPressed: _isLoading ? null : () => _updateDriverInfo(viewModel),
+      onPressed: _isLoading ? null : () => _updateDriverInfo(),
       style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
         padding: EdgeInsets.symmetric(vertical: 16.h),
         minimumSize: Size(double.infinity, 48.h),
       ),
@@ -253,13 +258,13 @@ class _DriverInfoFormState extends State<DriverInfoForm> {
   }
 
   /// Cập nhật thông tin tài xế
-  Future<void> _updateDriverInfo(AccountViewModel viewModel) async {
+  Future<void> _updateDriverInfo() async {
     if (widget.formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      final success = await viewModel.updateDriverInfo(
+      final success = await _accountViewModel.updateDriverInfo(
         driverId: widget.driver.id,
         identityNumber: _identityNumberController.text,
         driverLicenseNumber: _driverLicenseNumberController.text,
@@ -277,26 +282,19 @@ class _DriverInfoFormState extends State<DriverInfoForm> {
 
       if (success && mounted) {
         try {
-          // Try to fetch updated driver information if AuthViewModel is available
-          final authViewModel = Provider.of<AuthViewModel>(
-            context,
-            listen: false,
-          );
-          if (authViewModel.user != null) {
-            await viewModel.getDriverInfo(authViewModel.user!.id);
+          // Refresh driver info in both view models
+          if (_authViewModel.user != null) {
+            // First update the AccountViewModel
+            await _accountViewModel.getDriverInfo(_authViewModel.user!.id);
+
+            // Then update the AuthViewModel
+            await _authViewModel.refreshDriverInfo();
           }
         } catch (e) {
-          // If AuthViewModel is not available, just continue
-          debugPrint('Could not access AuthViewModel: $e');
+          debugPrint('Error refreshing driver info: $e');
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cập nhật thông tin thành công'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-
+        // Call the callback to notify parent that update is complete
         widget.onUpdateComplete(true);
       }
     }

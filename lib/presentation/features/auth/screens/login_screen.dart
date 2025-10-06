@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../app/app_routes.dart';
 import '../../../../core/services/service_locator.dart';
 import '../../../../core/utils/responsive_extensions.dart';
 import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
@@ -20,6 +21,27 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _isLoading = false;
+
+  // We'll use the AuthViewModel from the provider instead of creating our own
+  late AuthViewModel _authViewModel;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Delay to ensure the widget is mounted
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+
+        // Reset error state if needed
+        if (_authViewModel.status == AuthStatus.error) {
+          _authViewModel.resetErrorState();
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -30,42 +52,39 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => getIt<AuthViewModel>(),
-      child: Scaffold(
-        body: ResponsiveLayoutBuilder(
-          builder: (context, sizingInformation) {
-            // Tablet layout
-            if (sizingInformation.isTablet) {
-              return Center(
-                child: Container(
-                  constraints: BoxConstraints(maxWidth: 600.w),
-                  child: Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16.r),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(32.r),
-                      child: _buildLoginForm(),
-                    ),
+    return Scaffold(
+      body: ResponsiveLayoutBuilder(
+        builder: (context, sizingInformation) {
+          // Tablet layout
+          if (sizingInformation.isTablet) {
+            return Center(
+              child: Container(
+                constraints: BoxConstraints(maxWidth: 600.w),
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16.r),
                   ),
-                ),
-              );
-            }
-            // Phone layout
-            else {
-              return SafeArea(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.all(24.r),
+                  child: Padding(
+                    padding: EdgeInsets.all(32.r),
                     child: _buildLoginForm(),
                   ),
                 ),
-              );
-            }
-          },
-        ),
+              ),
+            );
+          }
+          // Phone layout
+          else {
+            return SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(24.r),
+                  child: _buildLoginForm(),
+                ),
+              ),
+            );
+          }
+        },
       ),
     );
   }
@@ -86,6 +105,23 @@ class _LoginScreenState extends State<LoginScreen> {
           _buildForgotPassword(),
           SizedBox(height: 24.h),
           _buildLoginButton(),
+          // Show error message if there is one
+          Consumer<AuthViewModel>(
+            builder: (context, authViewModel, _) {
+              if (authViewModel.status == AuthStatus.error &&
+                  authViewModel.errorMessage.isNotEmpty) {
+                return Padding(
+                  padding: EdgeInsets.only(top: 16.h),
+                  child: Text(
+                    authViewModel.errorMessage,
+                    style: TextStyle(color: AppColors.error, fontSize: 14.sp),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
         ],
       ),
     );
@@ -183,11 +219,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildLoginButton() {
     return Consumer<AuthViewModel>(
       builder: (context, authViewModel, _) {
-        final isLoading = authViewModel.status == AuthStatus.loading;
+        final isLoading =
+            authViewModel.status == AuthStatus.loading || _isLoading;
 
         return ElevatedButton(
           onPressed: isLoading ? null : () => _handleLogin(authViewModel),
           style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
             padding: EdgeInsets.symmetric(vertical: 16.h),
             minimumSize: Size(double.infinity, 50.h),
             shape: RoundedRectangleBorder(
@@ -211,45 +250,59 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin(AuthViewModel authViewModel) async {
     if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
+
       final username = _usernameController.text.trim();
       final password = _passwordController.text.trim();
 
-      // Start login process
-      final loginFuture = authViewModel.login(username, password);
+      try {
+        // Start login process
+        final success = await authViewModel.login(username, password);
 
-      // Set a timeout for better UX
-      bool hasTimedOut = false;
+        if (mounted) {
+          if (success) {
+            // Navigate to main screen on success
+            Navigator.pushReplacementNamed(context, '/main');
+          } else {
+            // Show error message and reset loading state
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  authViewModel.errorMessage,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                backgroundColor: AppColors.error,
+                behavior: SnackBarBehavior.fixed,
+                duration: const Duration(seconds: 3),
+              ),
+            );
 
-      // Wait for a short time to see if API responds quickly
-      await Future.delayed(const Duration(milliseconds: 800), () {
-        // If we're still loading after timeout, navigate immediately
-        if (authViewModel.status == AuthStatus.loading && !hasTimedOut) {
-          hasTimedOut = true;
-          Navigator.pushReplacementNamed(context, '/main');
+            setState(() {
+              _isLoading = false;
+            });
+          }
         }
-      });
-
-      // Wait for the login to complete
-      final success = await loginFuture;
-
-      if (!mounted) return;
-
-      // If we haven't navigated yet due to timeout
-      if (success && !hasTimedOut) {
-        // Navigate to main screen with data already loaded
-        Navigator.pushReplacementNamed(context, '/main');
-      } else if (!success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              authViewModel.errorMessage,
-              style: const TextStyle(color: Colors.white),
+      } catch (e) {
+        // Handle exceptions
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Đã xảy ra lỗi: ${e.toString()}',
+                style: const TextStyle(color: Colors.white),
+              ),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.fixed,
+              duration: const Duration(seconds: 3),
             ),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.fixed,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+          );
+
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }

@@ -25,24 +25,42 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
+  // Use the singleton AuthViewModel
+  late final AuthViewModel _authViewModel;
+  late final AccountViewModel _accountViewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    // Get the singleton instances from GetIt
+    _authViewModel = getIt<AuthViewModel>();
+    _accountViewModel = getIt<AccountViewModel>();
+  }
+
   @override
   void dispose() {
     _oldPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
+    // Don't dispose the view models as they're managed by GetIt
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => getIt<AuthViewModel>()),
-        ChangeNotifierProvider(create: (_) => getIt<AccountViewModel>()),
-      ],
-      child: Scaffold(
-        appBar: AppBar(title: const Text('Đổi mật khẩu'), centerTitle: true),
-        body: Consumer2<AuthViewModel, AccountViewModel>(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Đổi mật khẩu'),
+        centerTitle: true,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+      ),
+      body: MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: _authViewModel),
+          ChangeNotifierProvider.value(value: _accountViewModel),
+        ],
+        child: Consumer2<AuthViewModel, AccountViewModel>(
           builder: (context, authViewModel, accountViewModel, _) {
             return Padding(
               padding: const EdgeInsets.all(16.0),
@@ -167,6 +185,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 _handleChangePassword(context, authViewModel, accountViewModel),
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16),
         disabledBackgroundColor: AppColors.primary.withOpacity(0.5),
       ),
@@ -181,11 +200,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             )
           : const Text(
               'Đổi mật khẩu',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
     );
   }

@@ -1,34 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/services/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
 import '../../../../core/utils/responsive_extensions.dart';
+import '../../../../domain/entities/order.dart';
 import '../../../../presentation/common_widgets/responsive_grid.dart';
 import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/common_widgets/skeleton_loader.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/theme/app_text_styles.dart';
 import '../../../features/auth/viewmodels/auth_viewmodel.dart';
+import '../viewmodels/order_list_viewmodel.dart';
 
-class OrdersScreen extends StatelessWidget {
+class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => getIt<AuthViewModel>(),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Danh sách đơn hàng'),
-          centerTitle: true,
-          automaticallyImplyLeading: false, // Loại bỏ nút back
-        ),
-        body: Consumer<AuthViewModel>(
-          builder: (context, authViewModel, _) {
-            final user = authViewModel.user;
-            final driver = authViewModel.driver;
+  State<OrdersScreen> createState() => _OrdersScreenState();
+}
 
+class _OrdersScreenState extends State<OrdersScreen> {
+  late final AuthViewModel _authViewModel;
+  late final OrderListViewModel _orderListViewModel;
+  String _selectedStatus = 'Tất cả';
+
+  @override
+  void initState() {
+    super.initState();
+    _authViewModel = getIt<AuthViewModel>();
+    _orderListViewModel = getIt<OrderListViewModel>();
+
+    // Fetch orders when the screen initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _orderListViewModel.getDriverOrders();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Danh sách đơn hàng'),
+        centerTitle: true,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false, // Loại bỏ nút back
+      ),
+      body: MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: _authViewModel),
+          ChangeNotifierProvider.value(value: _orderListViewModel),
+        ],
+        child: Consumer2<AuthViewModel, OrderListViewModel>(
+          builder: (context, authViewModel, orderListViewModel, _) {
             return ResponsiveLayoutBuilder(
               builder: (context, sizingInformation) {
                 return Padding(
@@ -36,12 +62,14 @@ class OrdersScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildFilterSection(context),
+                      _buildFilterSection(context, orderListViewModel),
                       SizedBox(height: 16.h),
                       Expanded(
-                        child: user == null || driver == null
-                            ? const OrdersSkeletonList(itemCount: 5)
-                            : _buildOrdersList(context, sizingInformation),
+                        child: _buildOrdersContent(
+                          context,
+                          orderListViewModel,
+                          sizingInformation,
+                        ),
                       ),
                     ],
                   ),
@@ -54,7 +82,83 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterSection(BuildContext context) {
+  Widget _buildOrdersContent(
+    BuildContext context,
+    OrderListViewModel viewModel,
+    SizingInformation sizingInformation,
+  ) {
+    switch (viewModel.state) {
+      case OrderListState.loading:
+        return const OrdersSkeletonList(itemCount: 5);
+
+      case OrderListState.error:
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, color: AppColors.error, size: 48.r),
+              SizedBox(height: 16.h),
+              Text('Đã xảy ra lỗi', style: AppTextStyles.titleMedium),
+              SizedBox(height: 8.h),
+              Text(
+                viewModel.errorMessage,
+                style: AppTextStyles.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 16.h),
+              ElevatedButton(
+                onPressed: () => viewModel.getDriverOrders(),
+                child: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        );
+
+      case OrderListState.loaded:
+        final orders = _getFilteredOrders(viewModel);
+
+        if (orders.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.inbox_outlined,
+                  color: AppColors.textSecondary,
+                  size: 48.r,
+                ),
+                SizedBox(height: 16.h),
+                Text('Không có đơn hàng nào', style: AppTextStyles.titleMedium),
+                SizedBox(height: 8.h),
+                Text(
+                  'Hiện tại bạn không có đơn hàng nào với trạng thái này',
+                  style: AppTextStyles.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        return _buildOrdersList(context, orders, sizingInformation);
+
+      default:
+        return const OrdersSkeletonList(itemCount: 5);
+    }
+  }
+
+  List<Order> _getFilteredOrders(OrderListViewModel viewModel) {
+    if (_selectedStatus == 'Tất cả') {
+      return viewModel.orders;
+    } else {
+      return viewModel.getOrdersByStatus(_selectedStatus);
+    }
+  }
+
+  Widget _buildFilterSection(
+    BuildContext context,
+    OrderListViewModel viewModel,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -64,15 +168,47 @@ class OrdersScreen extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              _buildFilterChip('Tất cả', true),
+              _buildFilterChip('Tất cả', _selectedStatus == 'Tất cả', (
+                selected,
+              ) {
+                if (selected) {
+                  setState(() => _selectedStatus = 'Tất cả');
+                }
+              }),
               SizedBox(width: 8.w),
-              _buildFilterChip('Chờ lấy hàng', false),
+              _buildFilterChip(
+                'Chờ lấy hàng',
+                _selectedStatus == 'Chờ lấy hàng',
+                (selected) {
+                  if (selected) {
+                    setState(() => _selectedStatus = 'Chờ lấy hàng');
+                  }
+                },
+              ),
               SizedBox(width: 8.w),
-              _buildFilterChip('Đang giao', false),
+              _buildFilterChip('Đang giao', _selectedStatus == 'Đang giao', (
+                selected,
+              ) {
+                if (selected) {
+                  setState(() => _selectedStatus = 'Đang giao');
+                }
+              }),
               SizedBox(width: 8.w),
-              _buildFilterChip('Hoàn thành', false),
+              _buildFilterChip('Hoàn thành', _selectedStatus == 'Hoàn thành', (
+                selected,
+              ) {
+                if (selected) {
+                  setState(() => _selectedStatus = 'Hoàn thành');
+                }
+              }),
               SizedBox(width: 8.w),
-              _buildFilterChip('Đã hủy', false),
+              _buildFilterChip('Đã hủy', _selectedStatus == 'Đã hủy', (
+                selected,
+              ) {
+                if (selected) {
+                  setState(() => _selectedStatus = 'Đã hủy');
+                }
+              }),
             ],
           ),
         ),
@@ -80,20 +216,23 @@ class OrdersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterChip(String label, bool isSelected) {
+  Widget _buildFilterChip(
+    String label,
+    bool isSelected,
+    Function(bool) onSelected,
+  ) {
     return FilterChip(
       selected: isSelected,
       label: Text(label),
       selectedColor: AppColors.primary.withOpacity(0.2),
       checkmarkColor: AppColors.primary,
-      onSelected: (bool selected) {
-        // TODO: Xử lý lọc theo trạng thái
-      },
+      onSelected: onSelected,
     );
   }
 
   Widget _buildOrdersList(
     BuildContext context,
+    List<Order> orders,
     SizingInformation sizingInformation,
   ) {
     // Sử dụng grid layout cho tablet và phone layout cho điện thoại
@@ -104,65 +243,35 @@ class OrdersScreen extends StatelessWidget {
         largeScreenColumns: 2,
         horizontalSpacing: 16.w,
         verticalSpacing: 16.h,
-        children: List.generate(10, (index) {
-          return _buildOrderItem(
-            orderId: 'DH00${index + 1}',
-            status: _getRandomStatus(index),
-            address: '${index + 100} Nguyễn Văn Linh, Quận 7, TP.HCM',
-            time: '${(index + 8) % 12 + 1}:${index * 10 % 60}',
-          );
-        }),
+        children: orders.map((order) {
+          return _buildOrderItem(context, order);
+        }).toList(),
       );
     } else {
       return ListView.separated(
-        itemCount: 10,
+        itemCount: orders.length,
         separatorBuilder: (context, index) => SizedBox(height: 12.h),
         itemBuilder: (context, index) {
-          return _buildOrderItem(
-            orderId: 'DH00${index + 1}',
-            status: _getRandomStatus(index),
-            address: '${index + 100} Nguyễn Văn Linh, Quận 7, TP.HCM',
-            time: '${(index + 8) % 12 + 1}:${index * 10 % 60}',
-          );
+          return _buildOrderItem(context, orders[index]);
         },
       );
     }
   }
 
-  String _getRandomStatus(int index) {
-    final statuses = ['Chờ lấy hàng', 'Đang giao', 'Hoàn thành', 'Đã hủy'];
-    return statuses[index % statuses.length];
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'Chờ lấy hàng':
-        return AppColors.warning;
-      case 'Đang giao':
-        return AppColors.inProgress;
-      case 'Hoàn thành':
-        return AppColors.success;
-      case 'Đã hủy':
-        return AppColors.error;
-      default:
-        return AppColors.textSecondary;
-    }
-  }
-
-  Widget _buildOrderItem({
-    required String orderId,
-    required String status,
-    required String address,
-    required String time,
-  }) {
-    final statusColor = _getStatusColor(status);
+  Widget _buildOrderItem(BuildContext context, Order order) {
+    final statusColor = _getStatusColor(order.status);
+    final formattedDate = DateFormat(
+      'dd/MM/yyyy HH:mm',
+    ).format(order.createdAt);
+    final statusText = _getStatusText(order.status);
 
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
       child: InkWell(
         onTap: () {
-          // TODO: Chuyển đến trang chi tiết đơn hàng
+          // Navigate to order details screen
+          Navigator.pushNamed(context, '/order-detail', arguments: order.id);
         },
         borderRadius: BorderRadius.circular(12.r),
         child: Padding(
@@ -173,7 +282,14 @@ class OrdersScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Mã đơn: #$orderId', style: AppTextStyles.titleMedium),
+                  Expanded(
+                    child: Text(
+                      'Mã đơn: #${order.orderCode}',
+                      style: AppTextStyles.titleMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
                   Container(
                     padding: EdgeInsets.symmetric(
                       horizontal: 8.w,
@@ -184,7 +300,7 @@ class OrdersScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16.r),
                     ),
                     child: Text(
-                      status,
+                      statusText,
                       style: TextStyle(
                         color: statusColor,
                         fontSize: 12.sp,
@@ -198,13 +314,27 @@ class OrdersScreen extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    Icons.location_on,
+                    Icons.person,
                     color: AppColors.textSecondary,
                     size: 16.r,
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child: Text(address, style: AppTextStyles.bodyMedium),
+                    child: Text(
+                      'Người nhận: ${order.receiverName}',
+                      style: AppTextStyles.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8.h),
+              Row(
+                children: [
+                  Icon(Icons.phone, color: AppColors.textSecondary, size: 16.r),
+                  SizedBox(width: 8.w),
+                  Text(
+                    'SĐT: ${order.receiverPhone}',
+                    style: AppTextStyles.bodyMedium,
                   ),
                 ],
               ),
@@ -217,13 +347,89 @@ class OrdersScreen extends StatelessWidget {
                     size: 16.r,
                   ),
                   SizedBox(width: 8.w),
-                  Text(time, style: AppTextStyles.bodyMedium),
+                  Text(formattedDate, style: AppTextStyles.bodyMedium),
                 ],
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'ASSIGNED_TO_DRIVER':
+        return AppColors.warning;
+      case 'IN_PROGRESS':
+        return AppColors.inProgress;
+      case 'COMPLETED':
+        return AppColors.success;
+      case 'CANCELLED':
+        return AppColors.error;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status.toUpperCase()) {
+      case 'ASSIGNED_TO_DRIVER':
+        return 'Chờ lấy hàng';
+      case 'IN_PROGRESS':
+        return 'Đang giao';
+      case 'COMPLETED':
+        return 'Hoàn thành';
+      case 'CANCELLED':
+        return 'Đã hủy';
+      default:
+        return status;
+    }
+  }
+}
+
+class OrdersSkeletonList extends StatelessWidget {
+  final int itemCount;
+
+  const OrdersSkeletonList({super.key, required this.itemCount});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      itemCount: itemCount,
+      separatorBuilder: (context, index) => SizedBox(height: 12.h),
+      itemBuilder: (context, index) {
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(16.r),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: SkeletonLoader(width: 120, height: 20),
+                    ),
+                    SizedBox(width: 8.w),
+                    const SkeletonLoader(width: 80, height: 24),
+                  ],
+                ),
+                SizedBox(height: 12.h),
+                const SkeletonLoader(width: double.infinity, height: 16),
+                SizedBox(height: 8.h),
+                const SkeletonLoader(width: 150, height: 16),
+                SizedBox(height: 8.h),
+                const SkeletonLoader(width: 100, height: 16),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

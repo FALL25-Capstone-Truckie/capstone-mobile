@@ -7,16 +7,22 @@ import '../../data/datasources/auth_data_source.dart';
 import '../../data/datasources/driver_data_source.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/driver_repository_impl.dart';
+import '../../data/repositories/order_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/driver_repository.dart';
+import '../../domain/repositories/order_repository.dart';
 import '../../domain/usecases/auth/change_password_usecase.dart';
 import '../../domain/usecases/auth/get_driver_info_usecase.dart';
 import '../../domain/usecases/auth/login_usecase.dart';
 import '../../domain/usecases/auth/logout_usecase.dart';
 import '../../domain/usecases/auth/refresh_token_usecase.dart';
 import '../../domain/usecases/auth/update_driver_info_usecase.dart';
+import '../../domain/usecases/orders/get_driver_orders_usecase.dart';
+import '../../domain/usecases/orders/get_order_details_usecase.dart';
 import '../../presentation/features/account/viewmodels/account_viewmodel.dart';
 import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
+import '../../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
+import '../../presentation/features/orders/viewmodels/order_list_viewmodel.dart';
 import 'api_service.dart';
 
 final getIt = GetIt.instance;
@@ -67,6 +73,10 @@ Future<void> setupServiceLocator() async {
     () => DriverRepositoryImpl(dataSource: getIt<DriverDataSource>()),
   );
 
+  getIt.registerLazySingleton<OrderRepository>(
+    () => OrderRepositoryImpl(apiService: getIt<ApiService>()),
+  );
+
   // Use cases
   getIt.registerLazySingleton<LoginUseCase>(
     () => LoginUseCase(getIt<AuthRepository>()),
@@ -92,7 +102,16 @@ Future<void> setupServiceLocator() async {
     () => ChangePasswordUseCase(getIt<AuthRepository>()),
   );
 
+  getIt.registerLazySingleton<GetDriverOrdersUseCase>(
+    () => GetDriverOrdersUseCase(orderRepository: getIt<OrderRepository>()),
+  );
+
+  getIt.registerLazySingleton<GetOrderDetailsUseCase>(
+    () => GetOrderDetailsUseCase(orderRepository: getIt<OrderRepository>()),
+  );
+
   // View models
+  // Use factory for AuthViewModel to avoid reusing disposed instances
   getIt.registerFactory<AuthViewModel>(
     () => AuthViewModel(
       loginUseCase: getIt<LoginUseCase>(),
@@ -102,11 +121,23 @@ Future<void> setupServiceLocator() async {
     ),
   );
 
-  getIt.registerFactory<AccountViewModel>(
+  getIt.registerLazySingleton<AccountViewModel>(
     () => AccountViewModel(
       getDriverInfoUseCase: getIt<GetDriverInfoUseCase>(),
       updateDriverInfoUseCase: getIt<UpdateDriverInfoUseCase>(),
       changePasswordUseCase: getIt<ChangePasswordUseCase>(),
+    ),
+  );
+
+  getIt.registerLazySingleton<OrderListViewModel>(
+    () => OrderListViewModel(
+      getDriverOrdersUseCase: getIt<GetDriverOrdersUseCase>(),
+    ),
+  );
+
+  getIt.registerLazySingleton<OrderDetailViewModel>(
+    () => OrderDetailViewModel(
+      getOrderDetailsUseCase: getIt<GetOrderDetailsUseCase>(),
     ),
   );
 }

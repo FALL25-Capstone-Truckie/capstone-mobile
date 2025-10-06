@@ -44,9 +44,7 @@ class AccountViewModel extends ChangeNotifier {
     _status = AccountStatus.loading;
     notifyListeners();
 
-    final result = await _getDriverInfoUseCase(
-      GetDriverInfoParams(userId: userId),
-    );
+    final result = await _getDriverInfoUseCase(const GetDriverInfoParams());
 
     result.fold(
       (failure) {

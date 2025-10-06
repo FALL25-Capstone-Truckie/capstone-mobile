@@ -28,7 +28,7 @@ abstract class AuthDataSource {
   Future<void> clearUserInfo();
 
   /// Refresh token
-  Future<TokenResponse> refreshToken(String refreshToken);
+  Future<TokenResponse> refreshToken();
 
   /// Đổi mật khẩu
   Future<bool> changePassword(
@@ -83,7 +83,6 @@ class AuthDataSourceImpl implements AuthDataSource {
         status: authResponse.user.status,
         role: authResponse.user.role,
         authToken: authResponse.authToken,
-        refreshToken: authResponse.refreshToken,
       );
 
       await saveUserInfo(user);
@@ -98,13 +97,11 @@ class AuthDataSourceImpl implements AuthDataSource {
   }
 
   @override
-  Future<TokenResponse> refreshToken(String refreshToken) async {
+  Future<TokenResponse> refreshToken() async {
     try {
       debugPrint('Attempting to refresh token');
 
-      final response = await apiService.post('/auths/token/refresh', {
-        'refreshToken': refreshToken,
-      });
+      final response = await apiService.post('/auths/token/refresh', {});
 
       debugPrint('Refresh token response received: $response');
 
@@ -123,17 +120,12 @@ class AuthDataSourceImpl implements AuthDataSource {
         'auth_token',
         tokenResponse.accessToken,
       );
-      await sharedPreferences.setString(
-        'refresh_token',
-        tokenResponse.refreshToken,
-      );
 
       // Cập nhật token trong thông tin người dùng
       final userJson = sharedPreferences.getString('user_info');
       if (userJson != null) {
         final userMap = json.decode(userJson) as Map<String, dynamic>;
         userMap['authToken'] = tokenResponse.accessToken;
-        userMap['refreshToken'] = tokenResponse.refreshToken;
         await sharedPreferences.setString('user_info', json.encode(userMap));
       }
 
@@ -187,10 +179,32 @@ class AuthDataSourceImpl implements AuthDataSource {
   @override
   Future<bool> logout() async {
     try {
+      // Call the logout API endpoint which will clear the HTTP-only cookie
+      final response = await apiService.post('/auths/logout', {});
+
+      if (!response['success']) {
+        debugPrint('Logout failed: ${response['message']}');
+        throw ServerException(
+          message: response['message'] ?? 'Đăng xuất thất bại',
+          statusCode: response['statusCode'] ?? 400,
+        );
+      }
+
+      // Clear local storage regardless of API response
       await clearUserInfo();
       return true;
     } catch (e) {
-      throw CacheException(message: 'Đăng xuất thất bại: ${e.toString()}');
+      // Try to clear local storage even if API call fails
+      try {
+        await clearUserInfo();
+      } catch (_) {
+        // Ignore any errors when clearing user info
+      }
+
+      if (e is ServerException) {
+        throw e;
+      }
+      throw ServerException(message: 'Đăng xuất thất bại: ${e.toString()}');
     }
   }
 
@@ -225,7 +239,6 @@ class AuthDataSourceImpl implements AuthDataSource {
   Future<void> saveUserInfo(User user) async {
     try {
       await sharedPreferences.setString('auth_token', user.authToken);
-      await sharedPreferences.setString('refresh_token', user.refreshToken);
 
       final userMap = {
         'id': user.id,
@@ -244,7 +257,6 @@ class AuthDataSourceImpl implements AuthDataSource {
           'isActive': user.role.isActive,
         },
         'authToken': user.authToken,
-        'refreshToken': user.refreshToken,
       };
 
       await sharedPreferences.setString('user_info', json.encode(userMap));
@@ -259,7 +271,6 @@ class AuthDataSourceImpl implements AuthDataSource {
   Future<void> clearUserInfo() async {
     try {
       await sharedPreferences.remove('auth_token');
-      await sharedPreferences.remove('refresh_token');
       await sharedPreferences.remove('user_info');
     } catch (e) {
       throw CacheException(

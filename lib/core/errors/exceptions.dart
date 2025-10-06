@@ -1,36 +1,36 @@
 class ServerException implements Exception {
   final String message;
-  final int statusCode;
+  final int? statusCode;
 
-  ServerException({this.message = 'Lỗi máy chủ', this.statusCode = 500});
+  ServerException({required this.message, this.statusCode});
 
   @override
-  String toString() => message;
+  String toString() => 'ServerException: $message (Code: $statusCode)';
 }
 
 class CacheException implements Exception {
   final String message;
 
-  CacheException({this.message = 'Lỗi dữ liệu cục bộ'});
+  CacheException({required this.message});
 
   @override
-  String toString() => message;
+  String toString() => 'CacheException: $message';
 }
 
 class NetworkException implements Exception {
   final String message;
 
-  NetworkException({this.message = 'Lỗi kết nối mạng'});
+  NetworkException({required this.message});
 
   @override
-  String toString() => message;
+  String toString() => 'NetworkException: $message';
 }
 
 class UnauthorizedException implements Exception {
   final String message;
 
-  UnauthorizedException({this.message = 'Không có quyền truy cập'});
+  UnauthorizedException({required this.message});
 
   @override
-  String toString() => message;
+  String toString() => 'UnauthorizedException: $message';
 }

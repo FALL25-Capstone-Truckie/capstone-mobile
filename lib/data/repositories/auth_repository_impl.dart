@@ -34,6 +34,8 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final result = await dataSource.logout();
       return Right(result);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(message: e.message));
     } on CacheException catch (e) {
       return Left(CacheFailure(message: e.message));
     } catch (e) {
@@ -66,18 +68,9 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, TokenResponse>> refreshToken() async {
     try {
-      // Lấy refresh token từ local storage
-      try {
-        final user = await dataSource.getCurrentUser();
-        final refreshToken = user.refreshToken;
-        debugPrint('Got refresh token: ${refreshToken.substring(0, 10)}...');
-
-        // Gọi API để làm mới token
-        final tokenResponse = await dataSource.refreshToken(refreshToken);
-        return Right(tokenResponse);
-      } on CacheException {
-        return Left(AuthFailure(message: 'Không tìm thấy thông tin đăng nhập'));
-      }
+      // Gọi API để làm mới token sử dụng HTTP-only cookie
+      final tokenResponse = await dataSource.refreshToken();
+      return Right(tokenResponse);
     } on ServerException catch (e) {
       return Left(ServerFailure(message: e.message));
     } on NetworkException catch (e) {

@@ -17,23 +17,41 @@ import '../viewmodels/account_viewmodel.dart';
 import '../widgets/index.dart';
 
 /// Màn hình tài khoản người dùng
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 
   @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  // Use the singleton instances from GetIt
+  late final AuthViewModel _authViewModel;
+  late final AccountViewModel _accountViewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _authViewModel = getIt<AuthViewModel>();
+    _accountViewModel = getIt<AccountViewModel>();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => getIt<AuthViewModel>()),
-        ChangeNotifierProvider(create: (_) => getIt<AccountViewModel>()),
-      ],
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Tài khoản'),
-          centerTitle: true,
-          automaticallyImplyLeading: false, // Loại bỏ nút back
-        ),
-        body: Consumer2<AuthViewModel, AccountViewModel>(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tài khoản'),
+        centerTitle: true,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false, // Loại bỏ nút back
+      ),
+      body: MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: _authViewModel),
+          ChangeNotifierProvider.value(value: _accountViewModel),
+        ],
+        child: Consumer2<AuthViewModel, AccountViewModel>(
           builder: (context, authViewModel, accountViewModel, _) {
             if (authViewModel.status == AuthStatus.loading) {
               return const AccountLoadingWidget();
@@ -191,8 +209,21 @@ class AccountScreen extends StatelessWidget {
   }
 
   /// Điều hướng đến màn hình chỉnh sửa thông tin tài xế
-  void _navigateToEditDriverInfo(BuildContext context, Driver driver) {
-    Navigator.pushNamed(context, '/edit-driver-info', arguments: driver);
+  void _navigateToEditDriverInfo(BuildContext context, Driver driver) async {
+    final result = await Navigator.pushNamed(
+      context,
+      '/edit-driver-info',
+      arguments: driver,
+    );
+
+    // If we got a successful result, refresh the data
+    if (result == true) {
+      if (_authViewModel.user != null) {
+        // Refresh driver info in both view models
+        await _accountViewModel.getDriverInfo(_authViewModel.user!.id);
+        await _authViewModel.refreshDriverInfo();
+      }
+    }
   }
 
   /// Xây dựng nội dung chính của màn hình tài khoản

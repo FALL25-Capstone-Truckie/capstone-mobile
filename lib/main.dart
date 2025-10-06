@@ -1,27 +1,63 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
 
 import 'app/app.dart';
-import 'core/services/service_locator.dart';
-import 'core/services/system_ui_service.dart';
-import 'core/utils/responsive_size_utils.dart';
+import 'app/app_routes.dart';
+import 'core/services/hot_reload_helper.dart';
+import 'core/services/index.dart';
+import 'presentation/features/auth/index.dart';
 
 void main() async {
+  // Đảm bảo binding được khởi tạo
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Cấu hình SystemChrome để xử lý thanh navigation bar
-  SystemUiService.configureSystemUI();
-
-  // Đảm bảo ứng dụng hiển thị tốt trên các thiết bị khác nhau
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  // Reset problematic instances for hot reload
+  HotReloadHelper.resetProblematicInstances();
 
   // Khởi tạo service locator
   await setupServiceLocator();
 
-  runApp(const TruckieApp());
+  // Đăng ký callback khi refresh token thất bại
+  ApiService.setTokenRefreshFailedCallback(() {
+    // Sử dụng GlobalKey<NavigatorState> để điều hướng mà không cần context
+    navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      AppRoutes.login,
+      (route) => false,
+    );
+  });
+
+  runApp(const MyApp());
+}
+
+// GlobalKey để điều hướng mà không cần context
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenUtilInit(
+      // Adjust design size to match your design
+      designSize: const Size(390, 844),
+      minTextAdapt: true,
+      splitScreenMode: true,
+      // Use builder with context to ensure proper initialization
+      builder: (context, child) {
+        return MultiProvider(
+          providers: [
+            // Create a new AuthViewModel instance each time
+            ChangeNotifierProvider<AuthViewModel>(
+              create: (_) => getIt<AuthViewModel>(),
+              // Don't dispose the ViewModel when the provider is disposed
+              // This prevents errors during hot reload
+              lazy: false,
+            ),
+          ],
+          child: TruckieApp(navigatorKey: navigatorKey),
+        );
+      },
+    );
+  }
 }

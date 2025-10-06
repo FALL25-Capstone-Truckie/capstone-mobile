@@ -5,12 +5,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../errors/exceptions.dart';
 
+// Callback khi refresh token thất bại
+typedef OnTokenRefreshFailedCallback = void Function();
+
 class ApiService {
   final String baseUrl;
   final http.Client client;
   bool _isRefreshing = false;
 
+  // Callback khi refresh token thất bại
+  static OnTokenRefreshFailedCallback? onTokenRefreshFailed;
+
   ApiService({required this.baseUrl, required this.client});
+
+  // Đặt callback khi refresh token thất bại
+  static void setTokenRefreshFailedCallback(
+    OnTokenRefreshFailedCallback callback,
+  ) {
+    onTokenRefreshFailed = callback;
+  }
 
   Future<Map<String, String>> _getHeaders() async {
     final headers = {'Content-Type': 'application/json'};
@@ -40,7 +53,7 @@ class ApiService {
       // Debug log
       _logResponse('GET', endpoint, response);
 
-      return _processResponse(response);
+      return _processResponse(response, endpoint);
     } on UnauthorizedException catch (e) {
       // Xử lý token hết hạn
       if (e.message.contains('expired') && !_isRefreshing) {
@@ -49,6 +62,9 @@ class ApiService {
         if (refreshed) {
           // Thử lại request với token mới
           return get(endpoint);
+        } else {
+          // Nếu refresh token thất bại, gọi callback
+          _handleTokenRefreshFailed();
         }
       }
       rethrow;
@@ -76,7 +92,7 @@ class ApiService {
       // Debug log
       _logResponse('POST', endpoint, response);
 
-      return _processResponse(response);
+      return _processResponse(response, endpoint);
     } on UnauthorizedException catch (e) {
       // Xử lý token hết hạn
       if (e.message.contains('expired') &&
@@ -87,6 +103,9 @@ class ApiService {
         if (refreshed) {
           // Thử lại request với token mới
           return post(endpoint, body);
+        } else {
+          // Nếu refresh token thất bại, gọi callback
+          _handleTokenRefreshFailed();
         }
       }
       rethrow;
@@ -114,7 +133,7 @@ class ApiService {
       // Debug log
       _logResponse('PUT', endpoint, response);
 
-      return _processResponse(response);
+      return _processResponse(response, endpoint);
     } on UnauthorizedException catch (e) {
       // Xử lý token hết hạn
       if (e.message.contains('expired') && !_isRefreshing) {
@@ -123,6 +142,9 @@ class ApiService {
         if (refreshed) {
           // Thử lại request với token mới
           return put(endpoint, body);
+        } else {
+          // Nếu refresh token thất bại, gọi callback
+          _handleTokenRefreshFailed();
         }
       }
       rethrow;
@@ -148,7 +170,7 @@ class ApiService {
       // Debug log
       _logResponse('DELETE', endpoint, response);
 
-      return _processResponse(response);
+      return _processResponse(response, endpoint);
     } on UnauthorizedException catch (e) {
       // Xử lý token hết hạn
       if (e.message.contains('expired') && !_isRefreshing) {
@@ -157,6 +179,9 @@ class ApiService {
         if (refreshed) {
           // Thử lại request với token mới
           return delete(endpoint);
+        } else {
+          // Nếu refresh token thất bại, gọi callback
+          _handleTokenRefreshFailed();
         }
       }
       rethrow;
@@ -171,20 +196,12 @@ class ApiService {
 
     _isRefreshing = true;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final refreshToken = prefs.getString('refresh_token');
-      if (refreshToken == null) {
-        debugPrint('No refresh token found');
-        _isRefreshing = false;
-        return false;
-      }
-
       debugPrint('Refreshing token...');
 
+      // No body needed as the refresh token is sent via HTTP-only cookie
       final response = await client.post(
         Uri.parse('$baseUrl/auths/token/refresh'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'refreshToken': refreshToken}),
       );
 
       _logResponse('POST', '/auths/token/refresh', response);
@@ -194,18 +211,16 @@ class ApiService {
 
         if (responseData['success'] == true && responseData['data'] != null) {
           final accessToken = responseData['data']['accessToken'];
-          final newRefreshToken = responseData['data']['refreshToken'];
 
           // Lưu token mới
+          final prefs = await SharedPreferences.getInstance();
           await prefs.setString('auth_token', accessToken);
-          await prefs.setString('refresh_token', newRefreshToken);
 
           // Cập nhật token trong thông tin người dùng
           final userJson = prefs.getString('user_info');
           if (userJson != null) {
             final userMap = json.decode(userJson) as Map<String, dynamic>;
             userMap['authToken'] = accessToken;
-            userMap['refreshToken'] = newRefreshToken;
             await prefs.setString('user_info', json.encode(userMap));
           }
 
@@ -217,11 +232,34 @@ class ApiService {
 
       debugPrint('Failed to refresh token');
       _isRefreshing = false;
+
+      // Xóa dữ liệu người dùng khi refresh token thất bại
+      await _clearUserData();
+
       return false;
     } catch (e) {
       debugPrint('Error refreshing token: ${e.toString()}');
       _isRefreshing = false;
+
+      // Xóa dữ liệu người dùng khi refresh token thất bại
+      await _clearUserData();
+
       return false;
+    }
+  }
+
+  // Xóa dữ liệu người dùng khi refresh token thất bại
+  Future<void> _clearUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('user_info');
+  }
+
+  // Gọi callback khi refresh token thất bại
+  void _handleTokenRefreshFailed() {
+    if (onTokenRefreshFailed != null) {
+      onTokenRefreshFailed!();
     }
   }
 
@@ -231,7 +269,7 @@ class ApiService {
     debugPrint('Response Body: ${response.body}');
   }
 
-  dynamic _processResponse(http.Response response) {
+  dynamic _processResponse(http.Response response, String endpoint) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return json.decode(response.body);
     } else if (response.statusCode == 401) {
@@ -244,6 +282,26 @@ class ApiService {
       }
       throw UnauthorizedException(message: errorMessage);
     } else {
+      // Special case for empty order list
+      if (response.statusCode == 400 &&
+          endpoint == '/orders/get-list-order-for-driver') {
+        try {
+          final responseData = json.decode(response.body);
+          final message = responseData['message'] ?? '';
+          if (message.toString().contains('Not found')) {
+            // Return an empty success response with empty data array
+            return {
+              'success': true,
+              'message': 'No orders found',
+              'statusCode': 200,
+              'data': [],
+            };
+          }
+        } catch (e) {
+          // Ignore JSON parsing errors
+        }
+      }
+
       String errorMessage = 'Đã xảy ra lỗi';
       try {
         final responseData = json.decode(response.body);

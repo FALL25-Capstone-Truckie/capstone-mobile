@@ -11,15 +11,14 @@ class GetDriverInfoUseCase {
   GetDriverInfoUseCase(this.repository);
 
   Future<Either<Failure, Driver>> call(GetDriverInfoParams params) async {
-    return await repository.getDriverByUserId(params.userId);
+    return await repository.getDriverInfo();
   }
 }
 
 class GetDriverInfoParams extends Equatable {
-  final String userId;
-
-  const GetDriverInfoParams({required this.userId});
+  // No parameters needed anymore as the API endpoint doesn't require userId
+  const GetDriverInfoParams();
 
   @override
-  List<Object?> get props => [userId];
+  List<Object?> get props => [];
 }

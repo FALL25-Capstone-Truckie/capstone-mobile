@@ -23,6 +23,10 @@ class AuthViewModel extends ChangeNotifier {
   Driver? _driver = null;
   String _errorMessage = '';
   bool _isRefreshing = false;
+  bool _disposed = false;
+
+  // Static instance to handle hot reload
+  static AuthViewModel? _instance;
 
   AuthViewModel({
     required LoginUseCase loginUseCase,
@@ -34,7 +38,17 @@ class AuthViewModel extends ChangeNotifier {
        _refreshTokenUseCase = refreshTokenUseCase,
        _getDriverInfoUseCase = getDriverInfoUseCase {
     // Kiểm tra trạng thái đăng nhập khi khởi tạo
-    checkAuthStatus();
+    if (_instance == null) {
+      _instance = this;
+      checkAuthStatus();
+    } else {
+      // Copy state from existing instance
+      _status = _instance!._status;
+      _user = _instance!._user;
+      _driver = _instance!._driver;
+      _errorMessage = _instance!._errorMessage;
+      _isRefreshing = _instance!._isRefreshing;
+    }
   }
 
   AuthStatus get status => _status;
@@ -43,6 +57,17 @@ class AuthViewModel extends ChangeNotifier {
   String get errorMessage => _errorMessage;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
   bool get isRefreshing => _isRefreshing;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) {
+      try {
+        super.notifyListeners();
+      } catch (e) {
+        debugPrint('Error in notifyListeners: $e');
+      }
+    }
+  }
 
   Future<bool> login(String username, String password) async {
     _status = AuthStatus.loading;
@@ -66,7 +91,7 @@ class AuthViewModel extends ChangeNotifier {
 
         // Fetch driver information if available
         if (_getDriverInfoUseCase != null && user.role.roleName == 'DRIVER') {
-          await _fetchDriverInfo(user.id);
+          await _fetchDriverInfo();
         }
 
         // Now set authenticated status
@@ -77,12 +102,10 @@ class AuthViewModel extends ChangeNotifier {
     );
   }
 
-  Future<void> _fetchDriverInfo(String userId) async {
+  Future<void> _fetchDriverInfo() async {
     if (_getDriverInfoUseCase == null) return;
 
-    final result = await _getDriverInfoUseCase!(
-      GetDriverInfoParams(userId: userId),
-    );
+    final result = await _getDriverInfoUseCase!(const GetDriverInfoParams());
 
     result.fold(
       (failure) {
@@ -95,29 +118,64 @@ class AuthViewModel extends ChangeNotifier {
     );
   }
 
-  Future<bool> logout() async {
-    // Không đặt trạng thái loading để tránh hiển thị thông báo trung gian
-    // _status = AuthStatus.loading;
-    // notifyListeners();
+  /// Refresh driver information from the server
+  Future<bool> refreshDriverInfo() async {
+    if (_getDriverInfoUseCase == null) return false;
 
-    final result = await _logoutUseCase(NoParams());
+    final result = await _getDriverInfoUseCase!(const GetDriverInfoParams());
 
     return result.fold(
       (failure) {
-        _status = AuthStatus.error;
-        _errorMessage = failure.message;
-        notifyListeners();
+        debugPrint('Failed to refresh driver info: ${failure.message}');
         return false;
       },
-      (_) {
-        // Reset data
-        _user = null;
-        _driver = null;
-        _status = AuthStatus.unauthenticated;
+      (driver) {
+        _driver = driver;
         notifyListeners();
         return true;
       },
     );
+  }
+
+  /// Logs out the user by clearing local data and calling the logout API
+  /// Returns true if local data was cleared successfully, regardless of API result
+  Future<bool> logout() async {
+    try {
+      // First clear local data
+      await _clearUserData();
+
+      // Update state
+      _user = null;
+      _driver = null;
+      _status = AuthStatus.unauthenticated;
+
+      try {
+        // Then try to call the logout API, but don't wait for it
+        _logoutUseCase(NoParams())
+            .then((result) {
+              result.fold(
+                (failure) {
+                  debugPrint('Logout API error: ${failure.message}');
+                },
+                (_) {
+                  debugPrint('Logout API success');
+                },
+              );
+            })
+            .catchError((e) {
+              debugPrint('Error during logout API call: $e');
+            });
+      } catch (e) {
+        debugPrint('Error initiating logout API call: $e');
+      }
+
+      // Notify listeners if not disposed
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Error during logout: $e');
+      return false;
+    }
   }
 
   Future<bool> refreshToken() async {
@@ -153,7 +211,6 @@ class AuthViewModel extends ChangeNotifier {
             status: _user!.status,
             role: _user!.role,
             authToken: tokenResponse.accessToken,
-            refreshToken: tokenResponse.refreshToken,
           );
         }
 
@@ -188,7 +245,7 @@ class AuthViewModel extends ChangeNotifier {
 
         // Fetch driver information if user is a driver
         if (_getDriverInfoUseCase != null && _user!.role.roleName == 'DRIVER') {
-          await _fetchDriverInfo(_user!.id);
+          await _fetchDriverInfo();
         }
       } catch (e) {
         debugPrint('Error parsing stored user info: $e');
@@ -205,10 +262,14 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   Future<void> _clearUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('refresh_token');
-    await prefs.remove('user_info');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auth_token');
+      await prefs.remove('refresh_token');
+      await prefs.remove('user_info');
+    } catch (e) {
+      debugPrint('Error clearing user data: $e');
+    }
   }
 
   // Xử lý lỗi token hết hạn
@@ -220,5 +281,25 @@ class AuthViewModel extends ChangeNotifier {
   void updateDriverInfo(Driver updatedDriver) {
     _driver = updatedDriver;
     notifyListeners();
+  }
+
+  // Reset error state
+  void resetErrorState() {
+    if (_status == AuthStatus.error) {
+      _status = AuthStatus.initial;
+      _errorMessage = '';
+      notifyListeners();
+    }
+  }
+
+  // Reset the view model for hot reload
+  static void resetInstance() {
+    _instance = null;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

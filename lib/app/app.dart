@@ -4,15 +4,21 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../core/utils/responsive_size_utils.dart';
 import '../presentation/theme/app_theme.dart';
-import 'app_router.dart';
+import 'app_routes.dart';
 
 class TruckieApp extends StatelessWidget {
-  const TruckieApp({super.key});
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  const TruckieApp({super.key, required this.navigatorKey});
 
   @override
   Widget build(BuildContext context) {
+    // Initialize ResponsiveSizeUtils here
+    ResponsiveSizeUtils().init(context);
+
     return MaterialApp(
       title: 'Truckie Driver',
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme.copyWith(
         scaffoldBackgroundColor: Colors.white,
@@ -25,7 +31,7 @@ class TruckieApp extends StatelessWidget {
         ),
         // Cấu hình để xử lý bottom padding cho navigation bar
         bottomNavigationBarTheme: AppTheme.lightTheme.bottomNavigationBarTheme
-            .copyWith(elevation: 8),
+            .copyWith(elevation: 0),
       ),
       darkTheme: AppTheme.darkTheme.copyWith(
         appBarTheme: AppTheme.darkTheme.appBarTheme.copyWith(
@@ -35,6 +41,9 @@ class TruckieApp extends StatelessWidget {
             systemNavigationBarColor: Colors.transparent,
           ),
         ),
+        // Cấu hình để xử lý bottom padding cho navigation bar trong dark mode
+        bottomNavigationBarTheme: AppTheme.darkTheme.bottomNavigationBarTheme
+            .copyWith(elevation: 0),
       ),
       themeMode: ThemeMode.light,
       localizationsDelegates: const [
@@ -46,10 +55,10 @@ class TruckieApp extends StatelessWidget {
         Locale('vi', 'VN'), // Vietnamese
       ],
       locale: const Locale('vi', 'VN'),
-      initialRoute: '/login',
-      onGenerateRoute: AppRouter.onGenerateRoute,
+      initialRoute: AppRoutes.login,
+      onGenerateRoute: AppRoutes.generateRoute,
       builder: (context, child) {
-        // Initialize responsive size utils
+        // Re-initialize ResponsiveSizeUtils on each rebuild to handle orientation changes
         ResponsiveSizeUtils().init(context);
 
         // Đảm bảo toàn bộ ứng dụng được padding đúng với system insets
