@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
+import '../../../../../app/app_routes.dart';
 import '../../../../../core/utils/responsive_extensions.dart';
 import '../../../../../domain/entities/order_detail.dart';
 import '../../../../../presentation/theme/app_colors.dart';
@@ -68,155 +69,54 @@ class _RouteMapSectionState extends State<RouteMapSection>
       return const SizedBox.shrink();
     }
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.all(16.r),
-            child: Text(
-              'Lộ trình vận chuyển',
-              style: AppTextStyles.titleMedium,
-            ),
-          ),
-          Container(
-            height: 300.h,
-            padding: EdgeInsets.all(8.r),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: Stack(
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(
+          context,
+          AppRoutes.routeDetails,
+          arguments: widget.viewModel,
+        );
+      },
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(16.r),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // VietMap widget
-                  VietmapGL(
-                    styleString: _getMapStyleString(),
-                    initialCameraPosition: _getInitialCameraPosition(),
-                    myLocationEnabled: true,
-                    onMapCreated: _onMapCreated,
-                    onMapRenderedCallback: () {
-                      if (!_isDisposed) {
-                        setState(() {
-                          _isMapReady = true;
-                        });
-                        _drawAllRoutes();
-                      }
-                    },
-                    onStyleLoadedCallback: () {
-                      if (!_isDisposed) {
-                        setState(() {
-                          _isMapInitialized = true;
-                        });
-                        _drawAllRoutes();
-                      }
-                    },
-                  ),
-
-                  // Chú thích
-                  Positioned(
-                    bottom: 8.r,
-                    right: 8.r,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.r,
-                        vertical: 4.r,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(8.r),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: List.generate(
-                          _routeColors.length,
-                          (index) => Padding(
-                            padding: EdgeInsets.only(
-                              right: index < _routeColors.length - 1 ? 8.w : 0,
-                            ),
-                            child: _buildLegendItemHorizontal(
-                              _routeColors[index],
-                              _shortRouteNames[index],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Loading indicator
-                  if (!_isMapReady)
-                    Container(
-                      color: Colors.white.withOpacity(0.7),
-                      child: const Center(
-                        child: CircularProgressIndicator(
+                  Text('Lộ trình vận chuyển', style: AppTextStyles.titleMedium),
+                  Row(
+                    children: [
+                      Text(
+                        'Xem trên bản đồ',
+                        style: AppTextStyles.bodySmall.copyWith(
                           color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-
-                  // Error message
-                  if (_hasError)
-                    Container(
-                      color: Colors.white.withOpacity(0.9),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: AppColors.error,
-                              size: 48.r,
-                            ),
-                            SizedBox(height: 16.h),
-                            Text(
-                              'Không thể hiển thị bản đồ',
-                              style: AppTextStyles.bodyMedium.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              _errorMessage,
-                              style: AppTextStyles.bodySmall,
-                              textAlign: TextAlign.center,
-                            ),
-                            SizedBox(height: 16.h),
-                            ElevatedButton(
-                              onPressed: () {
-                                if (!_isDisposed) {
-                                  setState(() {
-                                    _hasError = false;
-                                    _isMapReady = false;
-                                  });
-                                  // Bản đồ sẽ tự động được tải lại
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: const Text('Thử lại'),
-                            ),
-                          ],
-                        ),
+                      SizedBox(width: 4.w),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 12.r,
+                        color: AppColors.primary,
                       ),
-                    ),
+                    ],
+                  ),
                 ],
               ),
             ),
-          ),
 
-          // Thông tin tổng quát về lộ trình
-          if (_shouldShowRouteInfo())
-            Padding(padding: EdgeInsets.all(16.r), child: _buildRouteInfo()),
-        ],
+            // Thông tin tổng quát về lộ trình
+            if (_shouldShowRouteInfo())
+              Padding(padding: EdgeInsets.all(16.r), child: _buildRouteInfo()),
+          ],
+        ),
       ),
     );
   }

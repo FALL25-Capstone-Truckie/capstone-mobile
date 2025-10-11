@@ -135,7 +135,7 @@ class _PreDeliveryDocumentationSectionState
       if (result && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Xác nhận đóng gói thành công'),
+            content: Text('Xác nhận hàng hóa thành công'),
             backgroundColor: Colors.green,
           ),
         );
@@ -162,7 +162,7 @@ class _PreDeliveryDocumentationSectionState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Xác nhận đóng gói và seal',
+                  'Xác nhận hàng hóa và seal',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -233,7 +233,7 @@ class _PreDeliveryDocumentationSectionState
                               strokeWidth: 2,
                             ),
                           )
-                        : const Text('Xác nhận đóng gói và seal'),
+                        : const Text('Xác nhận hàng hóa và seal'),
                   ),
                 ),
               ],
@@ -253,7 +253,7 @@ class _PreDeliveryDocumentationSectionState
         Row(
           children: [
             const Text(
-              'Hình ảnh đóng gói',
+              'Hình ảnh hàng hóa',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(width: 4),

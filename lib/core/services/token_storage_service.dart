@@ -22,8 +22,28 @@ class TokenStorageService {
 
   /// Lấy access token từ memory
   String? getAccessToken() {
-    debugPrint('Getting access token: ${_accessToken?.substring(0, 15)}...');
-    return _accessToken;
+    if (_accessToken == null) {
+      debugPrint('Getting access token: null');
+      return null;
+    }
+
+    // Đảm bảo token không chứa dấu # hoặc khoảng trắng
+    final cleanToken = _accessToken!.replaceAll('#', '').trim();
+
+    // Log token đã được làm sạch
+    if (_accessToken != cleanToken) {
+      debugPrint('Token cleaned: removed invalid characters');
+    }
+
+    debugPrint(
+      'Getting access token: ${cleanToken.substring(0, min(15, cleanToken.length))}...',
+    );
+    return cleanToken;
+  }
+
+  /// Helper method to get minimum of two integers
+  int min(int a, int b) {
+    return a < b ? a : b;
   }
 
   /// Lưu access token vào memory

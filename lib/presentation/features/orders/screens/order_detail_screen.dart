@@ -100,6 +100,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final orderWithDetails = viewModel.orderWithDetails!;
     final bool canStartDelivery = viewModel.canStartDelivery();
     final bool canConfirmPreDelivery = viewModel.canConfirmPreDelivery();
+    final bool hasRouteData = viewModel.routeSegments.isNotEmpty;
 
     return Stack(
       children: [
@@ -126,8 +127,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               SizedBox(height: 16),
               PackageSection(order: orderWithDetails),
               SizedBox(height: 24),
-              RouteMapSection(viewModel: viewModel),
-              SizedBox(height: 24),
+              // RouteMapSection(viewModel: viewModel),
+              // SizedBox(height: 24),
               VehicleSection(order: orderWithDetails),
               SizedBox(height: 24),
             ],
@@ -204,8 +205,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  child: const Text('Xác nhận đóng gói và seal'),
+                  child: const Text('Xác nhận hàng hóa và seal'),
                 ),
+              ),
+            ),
+          ),
+
+        // Sticky Route Details Button (always visible in bottom right corner)
+        if (hasRouteData)
+          Positioned(
+            bottom: (canStartDelivery || canConfirmPreDelivery) ? 100 : 16,
+            right: 16,
+            child: Container(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: FloatingActionButton(
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.routeDetails,
+                    arguments: viewModel,
+                  );
+                },
+                backgroundColor: AppColors.primary,
+                child: const Icon(Icons.map_outlined, color: Colors.white),
+                tooltip: 'Xem chi tiết lộ trình',
               ),
             ),
           ),

@@ -31,11 +31,16 @@ import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/order_list_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/pre_delivery_documentation_viewmodel.dart';
-import 'api_service.dart';
-import 'token_storage_service.dart';
-import 'vietmap_service.dart';
+import '../../presentation/features/location_tracking/viewmodels/location_tracking_viewmodel.dart';
+import '../services/vehicle_websocket_service.dart';
+import '../services/mock_vehicle_websocket_service.dart';
+import '../services/location_tracking_service.dart';
+import '../services/api_service.dart';
+import '../services/token_storage_service.dart';
+import '../services/vietmap_service.dart';
 
-final getIt = GetIt.instance;
+final GetIt getIt = GetIt.instance;
+final GetIt serviceLocator = GetIt.instance;
 
 Future<void> setupServiceLocator() async {
   // External dependencies
@@ -78,6 +83,27 @@ Future<void> setupServiceLocator() async {
   // Register VietMapService
   getIt.registerLazySingleton<VietMapService>(
     () => VietMapService(apiService: getIt<ApiService>()),
+  );
+
+  // WebSocket services
+  // Sử dụng mock service cho testing - đổi thành false để sử dụng dịch vụ thật
+  final bool useMockWebSocket = false;
+
+  if (useMockWebSocket) {
+    getIt.registerLazySingleton<VehicleWebSocketService>(
+      () => MockVehicleWebSocketService(),
+    );
+  } else {
+    getIt.registerLazySingleton<VehicleWebSocketService>(
+      () => VehicleWebSocketService(baseUrl: 'ws://10.0.2.2:8080'),
+    );
+  }
+
+  // Location tracking service
+  getIt.registerLazySingleton<LocationTrackingService>(
+    () => LocationTrackingService(
+      webSocketService: getIt<VehicleWebSocketService>(),
+    ),
   );
 
   // Data sources
@@ -164,6 +190,12 @@ Future<void> setupServiceLocator() async {
       logoutUseCase: getIt<LogoutUseCase>(),
       refreshTokenUseCase: getIt<RefreshTokenUseCase>(),
       getDriverInfoUseCase: getIt<GetDriverInfoUseCase>(),
+    ),
+  );
+
+  getIt.registerFactory<LocationTrackingViewModel>(
+    () => LocationTrackingViewModel(
+      webSocketService: getIt<VehicleWebSocketService>(),
     ),
   );
 

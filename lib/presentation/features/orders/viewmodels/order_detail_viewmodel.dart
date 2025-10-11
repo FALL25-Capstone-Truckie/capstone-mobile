@@ -132,14 +132,13 @@ class OrderDetailViewModel extends BaseViewModel {
   /// Kiểm tra xem đơn hàng có thể bắt đầu giao hàng không
   bool canStartDelivery() {
     if (_orderWithDetails == null) return false;
-    return _orderWithDetails!.status == 'FULLY_PURCHASED';
+    return _orderWithDetails!.status == 'FULLY_PAID';
   }
 
   /// Kiểm tra xem đơn hàng có thể xác nhận đóng gói và seal không
   bool canConfirmPreDelivery() {
     if (_orderWithDetails == null) return false;
-    return _orderWithDetails!.status == 'PICKING_UP' ||
-        _orderWithDetails!.status == 'FULLY_PURCHASED';
+    return _orderWithDetails!.status == 'PICKING_UP';
   }
 
   /// Lấy ID của vehicle assignment

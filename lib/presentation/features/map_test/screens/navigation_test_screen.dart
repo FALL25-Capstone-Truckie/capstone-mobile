@@ -13,6 +13,7 @@ import '../../../../core/services/vietmap_service.dart';
 import '../../../../domain/entities/order_detail.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/theme/app_text_styles.dart';
+import '../../../../core/services/location_tracking_service.dart';
 import '../viewmodels/navigation_test_viewmodel.dart';
 
 class NavigationTestScreen extends StatefulWidget {
@@ -42,6 +43,11 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
   bool _isLoadingMapStyle = true; // Trạng thái đang tải map style
   bool _hasResetBeenCalled = false; // Flag để đánh dấu đã gọi reset chưa
 
+  // Dịch vụ theo dõi vị trí
+  late LocationTrackingService _locationTrackingService;
+  bool _isLocationTrackingActive = false;
+  String _locationTrackingStatus = 'Chưa kết nối';
+
   // Màu sắc cho các đoạn đường
   final List<Color> _routeColors = [
     AppColors.primary, // Màu xanh dương cho đoạn 1
@@ -69,12 +75,18 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
     _viewModel = NavigationTestViewModel();
     _viewModel.loadSampleOrder();
     _loadMapStyle();
+
+    // Khởi tạo dịch vụ theo dõi vị trí
+    _locationTrackingService = getIt<LocationTrackingService>();
   }
 
   @override
   void dispose() {
     _isDisposed = true;
     _locationUpdateTimer?.cancel();
+
+    // Dừng theo dõi vị trí
+    _stopLocationTracking();
 
     // Giải phóng tài nguyên map trước khi dispose
     _mapController = null;
@@ -304,10 +316,63 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
       _isFollowingUser = true; // Tự động bật chế độ theo dõi khi bắt đầu
     });
 
+    // Hiển thị dialog đang kết nối
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Đang kết nối'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Đang kết nối WebSocket...'),
+          ],
+        ),
+      ),
+    );
+
+    // Đảm bảo đã kết nối WebSocket trước khi bắt đầu mô phỏng
+    _startLocationTracking().then((success) {
+      // Đóng dialog
+      Navigator.of(context).pop();
+
+      if (!success) {
+        // Hiển thị thông báo lỗi nếu kết nối thất bại
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể kết nối WebSocket. Vui lòng thử lại.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _isPaused = true;
+        });
+        return;
+      }
+
+      if (_viewModel.currentLocation != null) {
+        // Đợi thêm một chút để đảm bảo kết nối đã hoàn toàn thiết lập
+        Future.delayed(Duration(milliseconds: 500), () {
+          // Gửi vị trí ban đầu sau khi kết nối thành công
+          _locationTrackingService.sendLocation(
+            _viewModel.currentLocation!,
+            bearing: _viewModel.currentBearing ?? 0.0,
+          );
+          debugPrint('📤 Gửi vị trí ban đầu qua WebSocket sau khi kết nối');
+        });
+      }
+
+      // Bắt đầu mô phỏng chỉ khi kết nối thành công
+      _startActualSimulation();
+    });
+  }
+
+  // Hàm thực hiện việc bắt đầu mô phỏng sau khi đã kết nối WebSocket
+  void _startActualSimulation() {
     // Biến để theo dõi thời gian cập nhật camera
     int _cameraUpdateCounter = 0;
-    final int _cameraUpdateFrequency =
-        3; // Chỉ cập nhật camera mỗi 3 lần cập nhật vị trí
 
     _viewModel.startSimulation(
       onLocationUpdate: (location, bearing, completedRoute) {
@@ -315,29 +380,28 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
           // Tăng bộ đếm
           _cameraUpdateCounter++;
 
-          // Update camera position to follow vehicle if in follow mode
-          if (_isFollowingUser &&
-              _cameraUpdateCounter % _cameraUpdateFrequency == 0) {
-            // Chỉ cập nhật camera sau mỗi _cameraUpdateFrequency lần
+          // Update camera position to follow vehicle - luôn theo dõi xe
+          if (_isFollowingUser) {
             _mapController!.animateCamera(
               CameraUpdate.newCameraPosition(
                 CameraPosition(
                   target: location,
-                  zoom: _is3DMode ? 16.0 : 15.0, // Giảm mức zoom
+                  zoom: _is3DMode ? 16.0 : 15.0,
                   bearing: _is3DMode ? bearing : 0.0,
-                  tilt: _is3DMode ? 45.0 : 0.0, // Giảm góc nghiêng
+                  tilt: _is3DMode ? 45.0 : 0.0,
                 ),
               ),
               duration: const Duration(
                 milliseconds: 500,
-              ), // Làm mượt chuyển động
+              ), // Tăng thời gian để mượt hơn
             );
           }
 
           // Update completed route line
           if (_completedRouteLine != null && completedRoute.length >= 2) {
-            // Tối ưu hóa: chỉ cập nhật polyline sau mỗi _cameraUpdateFrequency lần
-            if (_cameraUpdateCounter % _cameraUpdateFrequency == 0) {
+            // Tối ưu hóa: chỉ cập nhật polyline sau mỗi vài lần cập nhật vị trí
+            if (_cameraUpdateCounter % 5 == 0) {
+              // Tăng tần suất cập nhật để giảm tải
               // Đơn giản hóa route trước khi cập nhật để giảm tải
               List<LatLng> optimizedRoute = _simplifyRoute(completedRoute);
 
@@ -352,13 +416,18 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
               );
             }
           }
+
+          // Luôn gửi vị trí hiện tại qua WebSocket mỗi khi có cập nhật vị trí
+          if (_isLocationTrackingActive) {
+            _locationTrackingService.sendLocation(location, bearing: bearing);
+          }
         }
       },
       onSegmentComplete: (segmentIndex) {
         _drawRoutes();
       },
       onWaypointReached: _onWaypointReached,
-      simulationSpeed: _simulationSpeed,
+      simulationSpeed: _simulationSpeed * 0.7, // Giảm tốc độ mô phỏng xuống 70%
     );
   }
 
@@ -462,6 +531,11 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
       ),
     );
 
+    // Dừng theo dõi vị trí khi hoàn thành chuyến xe
+    _stopLocationTracking().then((_) {
+      debugPrint('📍 Đã ngắt kết nối WebSocket sau khi hoàn thành chuyến xe');
+    });
+
     // Reset simulation sau khi hoàn thành
     setState(() {
       _hasResetBeenCalled = false;
@@ -553,9 +627,9 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
             await _mapController!.addCircle(
               CircleOptions(
                 geometry: startPoint,
-                circleRadius: 10.0,
+                circleRadius: 6.0,
                 circleColor: Colors.red,
-                circleStrokeWidth: 2.0,
+                circleStrokeWidth: 1.0,
                 circleStrokeColor: Colors.white,
               ),
             );
@@ -564,9 +638,9 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
             await _mapController!.addCircle(
               CircleOptions(
                 geometry: endPoint,
-                circleRadius: 10.0,
+                circleRadius: 6.0,
                 circleColor: Colors.green,
-                circleStrokeWidth: 2.0,
+                circleStrokeWidth: 1.0,
                 circleStrokeColor: Colors.white,
               ),
             );
@@ -592,9 +666,9 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
             await _mapController!.addCircle(
               CircleOptions(
                 geometry: startPoint,
-                circleRadius: 8.0,
+                circleRadius: 5.0,
                 circleColor: color,
-                circleStrokeWidth: 2.0,
+                circleStrokeWidth: 1.0,
                 circleStrokeColor: Colors.white,
               ),
             );
@@ -603,9 +677,9 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
             await _mapController!.addCircle(
               CircleOptions(
                 geometry: endPoint,
-                circleRadius: 8.0,
+                circleRadius: 5.0,
                 circleColor: color,
-                circleStrokeWidth: 2.0,
+                circleStrokeWidth: 1.0,
                 circleStrokeColor: Colors.white,
               ),
             );
@@ -634,31 +708,31 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
         );
       }
 
-      // Di chuyển camera để hiển thị toàn bộ tuyến đường nếu không trong chế độ theo dõi người dùng
-      if (!_isFollowingUser) {
+      // Nếu đang ở chế độ theo dõi người dùng, focus vào vị trí hiện tại
+      if (_isFollowingUser) {
+        if (_viewModel.currentLocation != null) {
+          _setCameraToNavigationMode(_viewModel.currentLocation!);
+        } else if (_viewModel.routeSegments.isNotEmpty &&
+            _viewModel.routeSegments[0].isNotEmpty) {
+          _setCameraToNavigationMode(_viewModel.routeSegments[0][0]);
+        }
+      } else {
+        // Nếu không theo dõi, hiển thị toàn bộ tuyến đường mà không có vùng xanh
         if (allPoints.length > 1) {
           double minLat = allPoints.map((p) => p.latitude).reduce(min);
           double maxLat = allPoints.map((p) => p.latitude).reduce(max);
           double minLng = allPoints.map((p) => p.longitude).reduce(min);
           double maxLng = allPoints.map((p) => p.longitude).reduce(max);
 
-          // Cập nhật camera để hiển thị toàn bộ tuyến đường
+          // Cập nhật camera để hiển thị toàn bộ tuyến đường không có padding
           _mapController!.animateCamera(
             CameraUpdate.newLatLngBounds(
               LatLngBounds(
-                southwest: LatLng(minLat - 0.005, minLng - 0.005),
-                northeast: LatLng(maxLat + 0.005, maxLng + 0.005),
+                southwest: LatLng(minLat, minLng),
+                northeast: LatLng(maxLat, maxLng),
               ),
             ),
           );
-        }
-      } else {
-        // Nếu đang ở chế độ theo dõi người dùng, focus vào vị trí hiện tại
-        if (_viewModel.currentLocation != null) {
-          _setCameraToNavigationMode(_viewModel.currentLocation!);
-        } else if (_viewModel.routeSegments.isNotEmpty &&
-            _viewModel.routeSegments[0].isNotEmpty) {
-          _setCameraToNavigationMode(_viewModel.routeSegments[0][0]);
         }
       }
     } catch (e) {
@@ -701,13 +775,49 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
       _isPaused = true;
     });
     _viewModel.pauseSimulation();
+
+    // Không dừng theo dõi vị trí khi tạm dừng
   }
 
   void _resumeSimulation() {
     setState(() {
       _isPaused = false;
+      _isFollowingUser = true; // Đảm bảo theo dõi xe khi tiếp tục
     });
-    _viewModel.resumeSimulation();
+
+    // Đảm bảo theo dõi vị trí vẫn hoạt động
+    if (!_isLocationTrackingActive) {
+      _startLocationTracking().then((success) {
+        if (success) {
+          // Tiếp tục mô phỏng sau khi kết nối WebSocket thành công
+          _viewModel.resumeSimulation();
+
+          // Focus camera vào vị trí hiện tại
+          if (_viewModel.currentLocation != null) {
+            _setCameraToNavigationMode(_viewModel.currentLocation!);
+          }
+        } else {
+          // Hiển thị thông báo lỗi nếu kết nối thất bại
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể kết nối WebSocket. Vui lòng thử lại.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() {
+            _isPaused = true;
+          });
+        }
+      });
+    } else {
+      // WebSocket đã kết nối, chỉ cần tiếp tục mô phỏng
+      _viewModel.resumeSimulation();
+
+      // Focus camera vào vị trí hiện tại
+      if (_viewModel.currentLocation != null) {
+        _setCameraToNavigationMode(_viewModel.currentLocation!);
+      }
+    }
   }
 
   void _resetSimulation() {
@@ -726,6 +836,9 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
       _isFollowingUser = true; // Đảm bảo chế độ theo dõi được bật khi reset
     });
 
+    // Dừng mô phỏng hiện tại
+    _viewModel.pauseSimulation();
+
     // Reset viewModel
     _viewModel.resetSimulation();
 
@@ -741,6 +854,8 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
         _setNavigationCamera();
       }
     });
+
+    // Không dừng theo dõi vị trí khi reset, chỉ dừng khi hoàn thành chuyến xe
   }
 
   void _updateSimulationSpeed(double speed) {
@@ -934,7 +1049,8 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
                       child: VietmapGL(
                         styleString: _getMapStyleString(),
                         initialCameraPosition: _getInitialCameraPosition(),
-                        myLocationEnabled: true,
+                        myLocationEnabled:
+                            false, // Tắt vị trí hiện tại mặc định
                         myLocationTrackingMode:
                             MyLocationTrackingMode.values[0],
                         myLocationRenderMode: MyLocationRenderMode.values[0],
@@ -951,33 +1067,7 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
                       ),
                     ),
 
-                  // User location layer
-                  if (_mapController != null &&
-                      _isMapReady &&
-                      _isMapInitialized)
-                    UserLocationLayer(
-                      mapController: _mapController!,
-                      locationIcon: const Icon(
-                        Icons.circle,
-                        color: Colors.blue,
-                        size: 20,
-                      ),
-                      bearingIcon: Container(
-                        width: 30,
-                        height: 30,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                        ),
-                        child: const Icon(
-                          Icons.arrow_upward,
-                          color: Colors.red,
-                          size: 15,
-                        ),
-                      ),
-                      ignorePointer: true,
-                    ),
+                  // Bỏ UserLocationLayer - Không hiển thị vòng tròn xanh
 
                   // Vehicle marker
                   if (_mapController != null &&
@@ -1245,7 +1335,7 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 16.h),
 
                 // Speed control
                 Row(
@@ -1342,6 +1432,97 @@ class _NavigationTestScreenState extends State<NavigationTestScreen> {
         SizedBox(width: 4.w),
         Text(text, style: AppTextStyles.bodySmall.copyWith(fontSize: 10.sp)),
       ],
+    );
+  }
+
+  // Bắt đầu theo dõi vị trí
+  Future<bool> _startLocationTracking() async {
+    if (_isLocationTrackingActive) return true;
+
+    setState(() {
+      _locationTrackingStatus = 'Đang kết nối...';
+    });
+
+    try {
+      // Lấy thông tin xe từ sample order data
+      final orderJson = _viewModel.sampleOrderData['data']['order'];
+      final orderDetails = orderJson['orderDetails'][0];
+      final vehicleAssignment = orderDetails['vehicleAssignment'];
+      final vehicle = vehicleAssignment['vehicle'];
+
+      if (vehicle == null) {
+        setState(() {
+          _locationTrackingStatus = 'Lỗi: Không có thông tin xe';
+        });
+        return false;
+      }
+
+      final vehicleId = vehicle['id'];
+      final licensePlate = vehicle['licensePlateNumber'];
+
+      // Đảm bảo kết nối WebSocket thành công trước khi tiếp tục
+      final success = await _locationTrackingService.startTracking(
+        vehicleId: vehicleId,
+        licensePlateNumber: licensePlate,
+        onLocationUpdate: (data) {
+          // Xử lý dữ liệu vị trí nhận được
+          debugPrint('📍 Nhận vị trí từ server: $data');
+        },
+        onError: (error) {
+          setState(() {
+            _locationTrackingStatus = 'Lỗi: $error';
+            _isLocationTrackingActive = false;
+          });
+        },
+      );
+
+      setState(() {
+        _isLocationTrackingActive = success;
+        _locationTrackingStatus = success
+            ? 'Đã kết nối và đang theo dõi'
+            : 'Kết nối thất bại';
+      });
+
+      return success;
+    } catch (e) {
+      setState(() {
+        _locationTrackingStatus = 'Lỗi: $e';
+        _isLocationTrackingActive = false;
+      });
+      return false;
+    }
+  }
+
+  // Dừng theo dõi vị trí
+  Future<void> _stopLocationTracking() async {
+    if (!_isLocationTrackingActive) return;
+
+    try {
+      await _locationTrackingService.stopTracking();
+
+      if (!_isDisposed) {
+        setState(() {
+          _isLocationTrackingActive = false;
+          _locationTrackingStatus = 'Đã ngắt kết nối';
+        });
+      }
+    } catch (e) {
+      if (!_isDisposed) {
+        setState(() {
+          _locationTrackingStatus = 'Lỗi khi ngắt kết nối: $e';
+        });
+      }
+    }
+  }
+
+  // Gửi vị trí hiện tại
+  void _sendCurrentLocation() {
+    if (!_isLocationTrackingActive || _viewModel.currentLocation == null)
+      return;
+
+    _locationTrackingService.sendLocation(
+      _viewModel.currentLocation!,
+      bearing: _viewModel.currentBearing,
     );
   }
 }

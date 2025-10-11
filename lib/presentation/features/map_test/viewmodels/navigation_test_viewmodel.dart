@@ -6,10 +6,26 @@ import 'package:flutter/foundation.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../../core/services/api_service.dart';
+import '../../../../core/services/service_locator.dart';
 import '../../../../domain/entities/order_detail.dart';
 import '../../../../domain/entities/order_with_details.dart';
+import '../../../../core/services/location_tracking_service.dart';
 
 class NavigationTestViewModel extends ChangeNotifier {
+  // Location tracking service
+  final LocationTrackingService _locationTrackingService =
+      getIt<LocationTrackingService>();
+  bool _isTrackingActive = false;
+
+  // WebSocket service không còn cần thiết vì đã sử dụng LocationTrackingService
+  bool _isWebSocketConnected = false;
+  String? _currentVehicleId;
+  String? _currentLicensePlateNumber;
+  String? _jwtToken;
+
+  // Sử dụng Map thay vì OrderWithDetails để tránh lỗi
+  Map<String, dynamic>? _orderData;
+
   // Sample order data
   final Map<String, dynamic> _sampleOrderData = {
     "success": true,
@@ -26,7 +42,7 @@ class NavigationTestViewModel extends ChangeNotifier {
         "receiverIdentity": "0123456789",
         "packageDescription": "a",
         "createdAt": "2025-10-01T16:36:23.013867",
-        "status": "FULLY_PURCHASED",
+        "status": "FULLY_PAID",
         "deliveryAddress":
             "34/2 Nguyễn Thị Thập, Phường Tân Thuận, Thành Phố Hồ Chí Minh",
         "pickupAddress":
@@ -173,6 +189,7 @@ class NavigationTestViewModel extends ChangeNotifier {
   bool _isPaused = true;
   double _simulationSpeed = 1.0;
   Duration _simulationInterval = const Duration(milliseconds: 500);
+  bool _isSimulating = false;
 
   // Waypoints
   List<LatLng> _waypoints = []; // Carrier, Pickup, Delivery, Carrier
@@ -203,6 +220,9 @@ class NavigationTestViewModel extends ChangeNotifier {
   String get currentWaypointName => _currentWaypointName;
   String get nextWaypointName => _nextWaypointName;
 
+  // Getter để truy cập sample order data từ bên ngoài
+  Map<String, dynamic> get sampleOrderData => _sampleOrderData;
+
   // Kiểm tra nếu đây là điểm cuối cùng và là Carrier
   bool get isLastWaypoint =>
       _currentSegmentIndex == _routeSegments.length - 1 &&
@@ -214,66 +234,12 @@ class NavigationTestViewModel extends ChangeNotifier {
   // Load sample order data
   void loadSampleOrder() {
     try {
-      final orderData = _sampleOrderData['data']['order'];
-      final orderDetails = orderData['orderDetails'][0];
-      final vehicleAssignment = orderDetails['vehicleAssignment'];
-      final journeyHistory = vehicleAssignment['journeyHistories'][0];
-      final journeySegments = journeyHistory['journeySegments'];
-
-      _vehicleId = vehicleAssignment['vehicle']['id'];
-
-      // Parse route segments
-      _routeSegments = [];
-      _waypoints = [];
-      _waypointNames = [];
-
-      for (var segment in journeySegments) {
-        try {
-          final List<LatLng> points = [];
-          final List<dynamic> coordinates = json.decode(
-            segment['pathCoordinatesJson'],
-          );
-
-          for (var coordinate in coordinates) {
-            if (coordinate is List && coordinate.length >= 2) {
-              // Note: In JSON, coordinates are stored as [longitude, latitude]
-              final double lng = coordinate[0].toDouble();
-              final double lat = coordinate[1].toDouble();
-              points.add(LatLng(lat, lng));
-            }
-          }
-
-          if (points.isNotEmpty) {
-            _routeSegments.add(points);
-
-            // Add start point to waypoints
-            if (_waypoints.isEmpty) {
-              _waypoints.add(points.first);
-              _waypointNames.add(segment['startPointName']);
-            }
-
-            // Add end point to waypoints
-            _waypoints.add(points.last);
-            _waypointNames.add(segment['endPointName']);
-          }
-        } catch (e) {
-          debugPrint('Error parsing route segment: $e');
-        }
+      final orderData = _sampleOrderData;
+      if (orderData['success'] == true && orderData['data'] != null) {
+        final orderJson = orderData['data']['order'];
+        _orderData = orderJson;
+        _parseRouteFromOrder();
       }
-
-      // Set initial location to the start of the first segment
-      if (_routeSegments.isNotEmpty && _routeSegments[0].isNotEmpty) {
-        _currentLocation = _routeSegments[0][0];
-        _activeSegmentPoints = List.from(_routeSegments[0]);
-      }
-
-      // Set initial waypoint information
-      if (_waypointNames.isNotEmpty) {
-        _currentWaypointName = _waypointNames[0];
-        _nextWaypointName = _waypointNames.length > 1 ? _waypointNames[1] : '';
-      }
-
-      notifyListeners();
     } catch (e) {
       debugPrint('Error loading sample order: $e');
     }
@@ -284,43 +250,74 @@ class NavigationTestViewModel extends ChangeNotifier {
     _mapController = controller;
   }
 
-  // Start route simulation
+  // Bắt đầu mô phỏng
   void startSimulation({
     required Function(LatLng, double, List<LatLng>) onLocationUpdate,
-    required Function(int) onSegmentComplete,
+    Function(int)? onSegmentComplete,
     Function(String, String, int)? onWaypointReached,
     double simulationSpeed = 1.0,
   }) {
-    if (_routeSegments.isEmpty) return;
+    if (_isSimulating) return;
 
+    _isSimulating = true;
+    _isPaused = false;
+    _simulationSpeed = simulationSpeed;
+
+    // Lưu lại callbacks
     _onLocationUpdate = onLocationUpdate;
     _onSegmentComplete = onSegmentComplete;
     _onWaypointReached = onWaypointReached;
-    _simulationSpeed = simulationSpeed;
-    _isPaused = false;
 
-    // Reset simulation if it was completed
-    if (_currentSegmentIndex >= _routeSegments.length) {
-      resetSimulation();
+    // Đảm bảo có dữ liệu tuyến đường
+    if (_routeSegments.isEmpty) {
+      debugPrint('Không có dữ liệu tuyến đường để mô phỏng');
+      return;
     }
 
-    // Calculate interval based on speed
-    _simulationInterval = Duration(
-      milliseconds: (500 / _simulationSpeed).round(),
-    );
+    // Đặt vị trí ban đầu ở điểm đầu tiên của đoạn đường hiện tại
+    if (_currentSegmentIndex < _routeSegments.length &&
+        _routeSegments[_currentSegmentIndex].isNotEmpty) {
+      _currentLocation = _routeSegments[_currentSegmentIndex][0];
+      _currentPointIndex = 0;
+      _currentBearing = 0.0;
 
-    // Start the simulation timer
-    _simulationTimer?.cancel();
-    _simulationTimer = Timer.periodic(_simulationInterval, _updateLocation);
+      // Gọi callback với vị trí ban đầu ngay lập tức
+      onLocationUpdate(
+        _currentLocation!,
+        _currentBearing ?? 0.0,
+        _completedRoute,
+      );
+    }
+
+    // Tính toán khoảng thời gian cập nhật dựa trên tốc độ mô phỏng
+    // Tăng khoảng thời gian cơ bản để mô phỏng mượt mà hơn
+    final baseInterval = 800; // Tăng từ 500ms lên 800ms
+    final interval = (baseInterval / _simulationSpeed).round();
+    _simulationInterval = Duration(milliseconds: interval);
+
+    // Khởi tạo timer để cập nhật vị trí
+    _simulationTimer = Timer.periodic(_simulationInterval, (timer) {
+      if (_isPaused) return;
+
+      _updateLocation(
+        onLocationUpdate: onLocationUpdate,
+        onSegmentComplete: onSegmentComplete,
+        onWaypointReached: onWaypointReached,
+      );
+    });
   }
 
   // Update location during simulation
-  void _updateLocation(Timer timer) {
-    if (_isPaused || _routeSegments.isEmpty) return;
+  void _updateLocation({
+    Function(LatLng, double, List<LatLng>)? onLocationUpdate,
+    Function(int)? onSegmentComplete,
+    Function(String, String, int)? onWaypointReached,
+  }) {
+    if (_isPaused) return;
 
     // Check if we've reached the end of all segments
     if (_currentSegmentIndex >= _routeSegments.length) {
-      timer.cancel();
+      _simulationTimer?.cancel();
       return;
     }
 
@@ -342,8 +339,8 @@ class NavigationTestViewModel extends ChangeNotifier {
             : '';
 
         // Notify that we've reached a waypoint
-        if (_onWaypointReached != null) {
-          _onWaypointReached!(
+        if (onWaypointReached != null) {
+          onWaypointReached(
             _currentWaypointName,
             _nextWaypointName,
             _currentSegmentIndex,
@@ -367,13 +364,13 @@ class NavigationTestViewModel extends ChangeNotifier {
       }
 
       // Notify segment completion
-      if (_onSegmentComplete != null) {
-        _onSegmentComplete!(_currentSegmentIndex - 1);
+      if (onSegmentComplete != null) {
+        onSegmentComplete(_currentSegmentIndex - 1);
       }
 
       // Check if we've completed all segments
       if (_currentSegmentIndex >= _routeSegments.length) {
-        timer.cancel();
+        _simulationTimer?.cancel();
         return;
       }
 
@@ -399,8 +396,8 @@ class NavigationTestViewModel extends ChangeNotifier {
     _updateVehicleLocation();
 
     // Notify location update
-    if (_onLocationUpdate != null) {
-      _onLocationUpdate!(_currentLocation!, _currentBearing!, _completedRoute);
+    if (onLocationUpdate != null) {
+      onLocationUpdate(_currentLocation!, _currentBearing!, _completedRoute);
     }
 
     notifyListeners();
@@ -424,12 +421,12 @@ class NavigationTestViewModel extends ChangeNotifier {
 
   // Update vehicle location on server
   void _updateVehicleLocation() {
-    if (_vehicleId == null || _currentLocation == null) return;
+    if (_currentVehicleId == null || _currentLocation == null) return;
 
     // In a real implementation, this would make an API call
     // For this simulation, we'll just log the update
     debugPrint(
-      'Updating vehicle location: Vehicle ID: $_vehicleId, '
+      'Updating vehicle location: Vehicle ID: $_currentVehicleId, '
       'Lat: ${_currentLocation!.latitude}, Lng: ${_currentLocation!.longitude}',
     );
 
@@ -491,31 +488,45 @@ class NavigationTestViewModel extends ChangeNotifier {
     }
   }
 
-  // Reset simulation
+  /// Reset simulation state
   void resetSimulation() {
+    // Cancel any ongoing timers
+    _simulationTimer?.cancel();
+    _simulationTimer = null;
+
+    // Reset state
+    _isPaused = true;
+    _isSimulating = false;
     _currentSegmentIndex = 0;
     _currentPointIndex = 0;
-    _completedRoute = [];
+    _currentLocation = null;
+    _currentBearing = 0.0;
+    _simulationSpeed = 1.0;
     _isAtWaypoint = false;
+    _currentWaypointName = '';
+    _nextWaypointName = '';
 
+    // Clear completed route
+    _completedRoute.clear();
+
+    // Reset callbacks
+    _onLocationUpdate = null;
+    _onSegmentComplete = null;
+    _onWaypointReached = null;
+
+    // Re-parse route from order data to ensure fresh state
+    if (_orderData != null) {
+      _parseRouteFromOrder();
+    }
+
+    // Initialize active segment points
     if (_routeSegments.isNotEmpty && _routeSegments[0].isNotEmpty) {
-      _currentLocation = _routeSegments[0][0];
       _activeSegmentPoints = List.from(_routeSegments[0]);
     } else {
-      _currentLocation = null;
       _activeSegmentPoints = [];
     }
 
-    _currentBearing = 0;
-    _isPaused = true;
-
-    // Reset waypoint information
-    if (_waypointNames.isNotEmpty) {
-      _currentWaypointName = _waypointNames[0];
-      _nextWaypointName = _waypointNames.length > 1 ? _waypointNames[1] : '';
-    }
-
-    _simulationTimer?.cancel();
+    debugPrint('Navigation simulation reset');
 
     notifyListeners();
   }
@@ -523,14 +534,22 @@ class NavigationTestViewModel extends ChangeNotifier {
   // Update simulation speed
   void updateSimulationSpeed(double speed) {
     _simulationSpeed = speed;
-    _simulationInterval = Duration(
-      milliseconds: (500 / _simulationSpeed).round(),
-    );
+
+    // Tăng khoảng thời gian cơ bản để mô phỏng mượt mà hơn
+    final baseInterval = 800; // Tăng từ 500ms lên 800ms
+    final interval = (baseInterval / _simulationSpeed).round();
+    _simulationInterval = Duration(milliseconds: interval);
 
     // Restart timer with new interval if running
     if (!_isPaused && _simulationTimer != null) {
       _simulationTimer!.cancel();
-      _simulationTimer = Timer.periodic(_simulationInterval, _updateLocation);
+      _simulationTimer = Timer.periodic(_simulationInterval, (timer) {
+        _updateLocation(
+          onLocationUpdate: _onLocationUpdate,
+          onSegmentComplete: _onSegmentComplete,
+          onWaypointReached: _onWaypointReached,
+        );
+      });
     }
 
     notifyListeners();
@@ -538,7 +557,138 @@ class NavigationTestViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Dừng theo dõi vị trí khi dispose
+    if (_isTrackingActive) {
+      _locationTrackingService.stopTracking();
+    }
     _simulationTimer?.cancel();
     super.dispose();
+  }
+
+  // Bắt đầu theo dõi vị trí
+  Future<bool> _startLocationTracking() async {
+    if (_isTrackingActive) return true;
+
+    try {
+      // Lấy thông tin xe từ order data
+      if (_currentVehicleId == null || _currentLicensePlateNumber == null) {
+        debugPrint('❌ Không thể bắt đầu theo dõi: Không có thông tin xe');
+        return false;
+      }
+
+      final success = await _locationTrackingService.startTracking(
+        vehicleId: _currentVehicleId!,
+        licensePlateNumber: _currentLicensePlateNumber!,
+        onLocationUpdate: (data) {
+          debugPrint('📍 Nhận vị trí từ server: $data');
+        },
+        onError: (error) {
+          debugPrint('❌ Lỗi theo dõi vị trí: $error');
+        },
+      );
+
+      _isTrackingActive = success;
+      return success;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi bắt đầu theo dõi vị trí: $e');
+      return false;
+    }
+  }
+
+  // Dừng theo dõi vị trí
+  Future<void> _stopLocationTracking() async {
+    if (!_isTrackingActive) return;
+
+    try {
+      await _locationTrackingService.stopTracking();
+      _isTrackingActive = false;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi dừng theo dõi vị trí: $e');
+    }
+  }
+
+  // Xóa phương thức _sendLocationUpdate vì đã sử dụng LocationTrackingService
+
+  // Parse route segments from order details
+  void _parseRouteFromOrder() {
+    if (_orderData == null) {
+      debugPrint('No order data available.');
+      return;
+    }
+
+    try {
+      final orderDetails = _orderData!['orderDetails'][0];
+      final vehicleAssignment = orderDetails['vehicleAssignment'];
+      final journeyHistories = vehicleAssignment['journeyHistories'];
+
+      if (journeyHistories == null || journeyHistories.isEmpty) {
+        debugPrint('No journey histories found.');
+        return;
+      }
+
+      final journeyHistory = journeyHistories[0];
+      final journeySegments = journeyHistory['journeySegments'];
+
+      _routeSegments = [];
+      _waypoints = [];
+      _waypointNames = [];
+
+      for (var segment in journeySegments) {
+        try {
+          final List<LatLng> points = [];
+          final List<dynamic> coordinates = json.decode(
+            segment['pathCoordinatesJson'],
+          );
+
+          for (var coordinate in coordinates) {
+            if (coordinate is List && coordinate.length >= 2) {
+              // Note: In JSON, coordinates are stored as [longitude, latitude]
+              final double lng = coordinate[0].toDouble();
+              final double lat = coordinate[1].toDouble();
+              points.add(LatLng(lat, lng));
+            }
+          }
+
+          if (points.isNotEmpty) {
+            _routeSegments.add(points);
+
+            // Add start point to waypoints
+            if (_waypoints.isEmpty) {
+              _waypoints.add(points.first);
+              _waypointNames.add(segment['startPointName']);
+            }
+
+            // Add end point to waypoints
+            _waypoints.add(points.last);
+            _waypointNames.add(segment['endPointName']);
+          }
+        } catch (e) {
+          debugPrint('Error parsing route segment: $e');
+        }
+      }
+
+      // Set initial location to the start of the first segment
+      if (_routeSegments.isNotEmpty && _routeSegments[0].isNotEmpty) {
+        _currentLocation = _routeSegments[0][0];
+        _activeSegmentPoints = List.from(_routeSegments[0]);
+      }
+
+      // Set initial waypoint information
+      if (_waypointNames.isNotEmpty) {
+        _currentWaypointName = _waypointNames[0];
+        _nextWaypointName = _waypointNames.length > 1 ? _waypointNames[1] : '';
+      }
+
+      // Lấy thông tin xe
+      final vehicle = vehicleAssignment['vehicle'];
+      if (vehicle != null) {
+        _currentVehicleId = vehicle['id'];
+        _currentLicensePlateNumber = vehicle['licensePlateNumber'];
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error parsing order data: $e');
+    }
   }
 }

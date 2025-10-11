@@ -90,15 +90,24 @@ class ApiService {
     return true;
   }
 
-  Future<dynamic> get(String endpoint) async {
+  Future<dynamic> get(
+    String endpoint, {
+    Map<String, String>? queryParameters,
+  }) async {
     // Đảm bảo token hợp lệ trước khi gọi API
     await _ensureValidToken();
 
     try {
       final headers = await _getHeaders();
 
+      // Xây dựng URI với query parameters nếu có
+      var uri = Uri.parse('$baseUrl$endpoint');
+      if (queryParameters != null && queryParameters.isNotEmpty) {
+        uri = uri.replace(queryParameters: queryParameters);
+      }
+
       // Debug log
-      debugPrint('GET Request: $baseUrl$endpoint');
+      debugPrint('GET Request: $uri');
       debugPrint('Headers: $headers');
 
       // Kiểm tra xem có token không
@@ -106,10 +115,7 @@ class ApiService {
         debugPrint('WARNING: No Authorization header for request to $endpoint');
       }
 
-      final response = await client.get(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: headers,
-      );
+      final response = await client.get(uri, headers: headers);
 
       // Debug log
       _logResponse('GET', endpoint, response);
@@ -338,6 +344,11 @@ class ApiService {
       await tokenStorageService.clearAllTokens();
       return false;
     }
+  }
+
+  /// Public method to refresh token
+  Future<bool> refreshToken() async {
+    return _refreshToken();
   }
 
   // Xóa dữ liệu người dùng khi refresh token thất bại

@@ -10,10 +10,14 @@ import '../presentation/features/auth/screens/login_screen.dart';
 import '../presentation/features/delivery/screens/active_delivery_screen.dart';
 import '../presentation/features/delivery/screens/delivery_map_screen.dart';
 import '../presentation/features/home/screens/home_screen.dart';
+import '../presentation/features/location_tracking/screens/driver_location_screen.dart';
+import '../presentation/features/location_tracking/screens/websocket_test_screen.dart';
 import '../presentation/features/main/screens/main_screen.dart';
 import '../presentation/features/orders/screens/order_detail_screen.dart';
 import '../presentation/features/orders/screens/orders_screen.dart';
 import '../presentation/features/orders/screens/pre_delivery_documentation_screen.dart';
+import '../presentation/features/orders/screens/route_details_screen.dart';
+import '../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../presentation/features/splash/screens/splash_screen.dart';
 
 class AppRoutes {
@@ -28,6 +32,9 @@ class AppRoutes {
   static const String activeDelivery = '/active-delivery';
   static const String deliveryMap = '/delivery-map';
   static const String preDeliveryDocumentation = '/pre-delivery-documentation';
+  static const String driverLocation = '/driver-location';
+  static const String websocketTest = '/websocket-test';
+  static const String routeDetails = '/route-details';
 
   // Route generator
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -88,6 +95,33 @@ class AppRoutes {
           builder: (_) => ResponsiveWrapper(
             child: PreDeliveryDocumentationScreen(order: order),
           ),
+        );
+
+      case routeDetails:
+        final OrderDetailViewModel viewModel =
+            settings.arguments as OrderDetailViewModel;
+        return MaterialPageRoute(
+          builder: (_) => ResponsiveWrapper(
+            child: RouteDetailsScreen(viewModel: viewModel),
+          ),
+        );
+
+      case driverLocation:
+        final Map<String, dynamic> args =
+            settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => ResponsiveWrapper(
+            child: DriverLocationScreen(
+              vehicleId: args['vehicleId'] as String,
+              licensePlateNumber: args['licensePlateNumber'] as String,
+              jwtToken: args['jwtToken'] as String,
+            ),
+          ),
+        );
+
+      case websocketTest:
+        return MaterialPageRoute(
+          builder: (_) => const ResponsiveWrapper(child: WebSocketTestScreen()),
         );
 
       default:
