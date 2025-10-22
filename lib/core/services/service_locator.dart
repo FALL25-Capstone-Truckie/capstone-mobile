@@ -34,6 +34,7 @@ import '../../presentation/features/delivery/viewmodels/navigation_viewmodel.dar
 import '../../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/order_list_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/pre_delivery_documentation_viewmodel.dart';
+import '../constants/api_constants.dart';
 import '../services/vehicle_websocket_service.dart';
 import '../services/mock_vehicle_websocket_service.dart';
 import '../services/enhanced_location_tracking_service.dart';
@@ -44,7 +45,6 @@ import '../services/global_location_manager.dart';
 import '../services/navigation_state_service.dart';
 
 final GetIt getIt = GetIt.instance;
-final GetIt serviceLocator = GetIt.instance;
 
 Future<void> setupServiceLocator() async {
   // External dependencies
@@ -57,10 +57,11 @@ Future<void> setupServiceLocator() async {
   getIt.registerSingleton<TokenStorageService>(tokenStorageService);
   debugPrint('TokenStorageService registered successfully');
 
-  // API Client with base URL
-  final apiUrl = 'http://10.0.2.2:8080/api/v1';
-  debugPrint('Initializing ApiClient with base URL: $apiUrl');
-  getIt.registerLazySingleton<ApiClient>(() => ApiClient(baseUrl: apiUrl));
+  // API Client with base URL from constants
+  debugPrint('Initializing ApiClient with base URL: ${ApiConstants.baseUrl}');
+  getIt.registerLazySingleton<ApiClient>(
+    () => ApiClient(baseUrl: ApiConstants.baseUrl),
+  );
 
   // Register VietMapService
   getIt.registerLazySingleton<VietMapService>(
@@ -77,7 +78,7 @@ Future<void> setupServiceLocator() async {
     );
   } else {
     getIt.registerLazySingleton<VehicleWebSocketService>(
-      () => VehicleWebSocketService(baseUrl: 'ws://10.0.2.2:8080'),
+      () => VehicleWebSocketService(baseUrl: ApiConstants.wsBaseUrl),
     );
   }
 
