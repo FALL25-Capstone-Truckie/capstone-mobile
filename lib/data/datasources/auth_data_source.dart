@@ -1,9 +1,10 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/errors/exceptions.dart';
-import '../../core/services/api_service.dart';
+import 'api_client.dart';
 import '../../core/services/token_storage_service.dart';
 import '../../domain/entities/auth_response.dart';
 import '../../domain/entities/token_response.dart';
@@ -41,39 +42,39 @@ abstract class AuthDataSource {
 }
 
 class AuthDataSourceImpl implements AuthDataSource {
-  final ApiService apiService;
+  final ApiClient _apiClient;
   final SharedPreferences sharedPreferences;
   final TokenStorageService tokenStorageService;
 
   AuthDataSourceImpl({
-    required this.apiService,
+    required ApiClient apiClient,
     required this.sharedPreferences,
     required this.tokenStorageService,
-  });
+  }) : _apiClient = apiClient;
 
   @override
   Future<User> login(String username, String password) async {
     try {
-      debugPrint('Attempting login for user: $username');
+      // debugPrint('Attempting login for user: $username');
 
       // Sử dụng endpoint mobile
-      final response = await apiService.post('/auths/mobile', {
+      final response = await _apiClient.dio.post('/auths/mobile', data: {
         'username': username,
         'password': password,
       });
 
-      debugPrint('Login response received: $response');
+      // debugPrint('Login response received: $response');
 
-      if (!response['success']) {
-        debugPrint('Login failed: ${response['message']}');
+      if (response.data['success'] != true) {
+        // debugPrint('Login failed: ${response.data['message']}');
         throw ServerException(
-          message: response['message'] ?? 'Đăng nhập thất bại',
-          statusCode: response['statusCode'] ?? 400,
+          message: response.data['message'] ?? 'Đăng nhập thất bại',
+          statusCode: response.statusCode ?? 400,
         );
       }
 
-      debugPrint('Login successful, processing user data');
-      final authResponse = AuthResponse.fromJson(response['data']);
+      // debugPrint('Login successful, processing user data');
+      final authResponse = AuthResponse.fromJson(response.data['data']);
 
       // Lưu tokens
       await tokenStorageService.saveAccessToken(authResponse.authToken);
@@ -96,7 +97,7 @@ class AuthDataSourceImpl implements AuthDataSource {
       await saveUserInfo(user);
       return user;
     } catch (e) {
-      debugPrint('Login exception: ${e.toString()}');
+      // debugPrint('Login exception: ${e.toString()}');
       if (e is ServerException) {
         rethrow;
       }
@@ -107,7 +108,7 @@ class AuthDataSourceImpl implements AuthDataSource {
   @override
   Future<TokenResponse> refreshToken() async {
     try {
-      debugPrint('Attempting to refresh token');
+      // debugPrint('Attempting to refresh token');
 
       // Lấy refresh token từ secure storage
       final refreshToken = await tokenStorageService.getRefreshToken();
@@ -119,36 +120,38 @@ class AuthDataSourceImpl implements AuthDataSource {
       }
 
       // Sử dụng endpoint mobile
-      final response = await apiService.post('/auths/mobile/token/refresh', {
+      final response = await _apiClient.dio.post('/auths/mobile/token/refresh', data: {
         'refreshToken': refreshToken,
       });
 
-      debugPrint('Refresh token response received: $response');
+      // debugPrint('Refresh token response received: $response');
 
-      if (!response['success']) {
-        debugPrint('Refresh token failed: ${response['message']}');
+      if (response.data['success'] == true && response.data['data'] != null) {
+        final tokenData = response.data['data'];
+        final tokenResponse = TokenResponse(
+          accessToken: tokenData['accessToken'],
+          refreshToken: tokenData['refreshToken'] ?? refreshToken,
+        );
+
+        // Lưu access token mới vào memory
+        await tokenStorageService.saveAccessToken(tokenResponse.accessToken);
+
+        // Cập nhật token trong thông tin người dùng
+        final userJson = sharedPreferences.getString('user_info');
+        if (userJson != null) {
+          final userMap = json.decode(userJson) as Map<String, dynamic>;
+          userMap['authToken'] = tokenResponse.accessToken;
+          await sharedPreferences.setString('user_info', json.encode(userMap));
+        }
+
+        return tokenResponse;
+      } else {
         throw ServerException(
-          message: response['message'] ?? 'Làm mới token thất bại',
-          statusCode: response['statusCode'] ?? 400,
+          message: response.data['message'] ?? 'Làm mới token thất bại',
         );
       }
-
-      final tokenResponse = TokenResponse.fromJson(response['data']);
-
-      // Lưu access token mới vào memory
-      await tokenStorageService.saveAccessToken(tokenResponse.accessToken);
-
-      // Cập nhật token trong thông tin người dùng
-      final userJson = sharedPreferences.getString('user_info');
-      if (userJson != null) {
-        final userMap = json.decode(userJson) as Map<String, dynamic>;
-        userMap['authToken'] = tokenResponse.accessToken;
-        await sharedPreferences.setString('user_info', json.encode(userMap));
-      }
-
-      return tokenResponse;
     } catch (e) {
-      debugPrint('Refresh token exception: ${e.toString()}');
+      // debugPrint('Refresh token exception: ${e.toString()}');
       if (e is ServerException) {
         rethrow;
       }
@@ -164,28 +167,26 @@ class AuthDataSourceImpl implements AuthDataSource {
     String confirmNewPassword,
   ) async {
     try {
-      debugPrint('Attempting to change password for user: $username');
+      // debugPrint('Attempting to change password for user: $username');
 
-      final response = await apiService.put('/auths/change-password', {
+      final response = await _apiClient.dio.put('/auths/change-password', data: {
         'username': username,
         'oldPassword': oldPassword,
         'newPassword': newPassword,
         'confirmNewPassword': confirmNewPassword,
       });
 
-      debugPrint('Change password response received: $response');
+      // debugPrint('Change password response received: $response');
 
-      if (!response['success']) {
-        debugPrint('Change password failed: ${response['message']}');
+      if (response.data['success'] == true) {
+        return true;
+      } else {
         throw ServerException(
-          message: response['message'] ?? 'Đổi mật khẩu thất bại',
-          statusCode: response['statusCode'] ?? 400,
+          message: response.data['message'] ?? 'Đổi mật khẩu thất bại',
         );
       }
-
-      return true;
     } catch (e) {
-      debugPrint('Change password exception: ${e.toString()}');
+      // debugPrint('Change password exception: ${e.toString()}');
       if (e is ServerException) {
         rethrow;
       }
@@ -200,15 +201,14 @@ class AuthDataSourceImpl implements AuthDataSource {
       final refreshToken = await tokenStorageService.getRefreshToken();
 
       // Call the logout API endpoint với refresh token
-      final response = await apiService.post('/auths/mobile/logout', {
+      final response = await _apiClient.dio.post('/auths/mobile/logout', data: {
         'refreshToken': refreshToken ?? '',
       });
 
-      if (!response['success']) {
-        debugPrint('Logout failed: ${response['message']}');
+      if (!response.data['success']) {
+        // debugPrint('Logout failed: ${response.data['message']}');
         throw ServerException(
-          message: response['message'] ?? 'Đăng xuất thất bại',
-          statusCode: response['statusCode'] ?? 400,
+          message: response.data['message'] ?? 'Không thể làm mới token',
         );
       }
 

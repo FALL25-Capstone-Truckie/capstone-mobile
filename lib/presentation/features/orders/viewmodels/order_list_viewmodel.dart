@@ -37,7 +37,7 @@ class OrderListViewModel extends BaseViewModel {
         final shouldRetry = await handleUnauthorizedError(failure.message);
         if (shouldRetry) {
           // Nếu refresh token thành công, thử lại
-          debugPrint('Token refreshed, retrying to get orders...');
+          // debugPrint('Token refreshed, retrying to get orders...');
           await getDriverOrders();
           return;
         }

@@ -5,6 +5,9 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show debugPrint;
 
+import '../../../../core/services/service_locator.dart';
+import '../../../../data/datasources/photo_completion_data_source.dart';
+import '../../../../data/datasources/vehicle_fuel_consumption_data_source.dart';
 import '../../../../domain/entities/order_with_details.dart';
 import '../../../../domain/usecases/orders/get_order_details_usecase.dart';
 import '../../../../domain/usecases/vehicle/create_vehicle_fuel_consumption_usecase.dart';
@@ -18,6 +21,8 @@ class OrderDetailViewModel extends BaseViewModel {
   final GetOrderDetailsUseCase _getOrderDetailsUseCase;
   final CreateVehicleFuelConsumptionUseCase
   _createVehicleFuelConsumptionUseCase;
+  final PhotoCompletionDataSource _photoCompletionDataSource = getIt<PhotoCompletionDataSource>();
+  final VehicleFuelConsumptionDataSource _fuelConsumptionDataSource = getIt<VehicleFuelConsumptionDataSource>();
 
   OrderDetailState _state = OrderDetailState.initial;
   StartDeliveryState _startDeliveryState = StartDeliveryState.initial;
@@ -26,6 +31,15 @@ class OrderDetailViewModel extends BaseViewModel {
   String _startDeliveryErrorMessage = '';
   List<List<LatLng>> _routeSegments = [];
   int _selectedSegmentIndex = 0;
+  
+  // Photo completion state
+  bool _isUploadingPhoto = false;
+  String _photoUploadError = '';
+  
+  // Odometer state
+  bool _isUploadingOdometer = false;
+  String _odometerUploadError = '';
+  String? _fuelConsumptionId;
 
   OrderDetailState get state => _state;
   StartDeliveryState get startDeliveryState => _startDeliveryState;
@@ -38,6 +52,11 @@ class OrderDetailViewModel extends BaseViewModel {
       _routeSegments.isNotEmpty && _selectedSegmentIndex < _routeSegments.length
       ? _routeSegments[_selectedSegmentIndex]
       : [];
+  
+  bool get isUploadingPhoto => _isUploadingPhoto;
+  String get photoUploadError => _photoUploadError;
+  bool get isUploadingOdometer => _isUploadingOdometer;
+  String get odometerUploadError => _odometerUploadError;
 
   OrderDetailViewModel({
     required GetOrderDetailsUseCase getOrderDetailsUseCase,
@@ -64,7 +83,7 @@ class OrderDetailViewModel extends BaseViewModel {
         final shouldRetry = await handleUnauthorizedError(failure.message);
         if (shouldRetry) {
           // Nếu refresh token thành công, thử lại
-          debugPrint('Token refreshed, retrying to get order details...');
+          // debugPrint('Token refreshed, retrying to get order details...');
           await getOrderDetails(orderId);
           return;
         }
@@ -138,6 +157,24 @@ class OrderDetailViewModel extends BaseViewModel {
   bool canConfirmPreDelivery() {
     if (_orderWithDetails == null) return false;
     return _orderWithDetails!.status == 'PICKING_UP';
+  }
+
+  /// Kiểm tra xem đơn hàng có thể xác nhận giao hàng không (chụp ảnh khách nhận hàng)
+  /// This is shown when arriving at delivery point (status ONGOING_DELIVERED)
+  bool canConfirmDelivery() {
+    if (_orderWithDetails == null) return false;
+    // Show photo confirmation section when status is ONGOING_DELIVERED
+    // After photo upload, backend will change status to DELIVERED
+    return _orderWithDetails!.status == 'ONGOING_DELIVERED';
+  }
+
+  /// Kiểm tra xem có thể upload odometer cuối không (khi đã về carrier)
+  /// This is shown when status is DELIVERED (after photo upload)
+  bool canUploadFinalOdometer() {
+    if (_orderWithDetails == null) return false;
+    // Allow odometer upload when order is DELIVERED
+    // This happens after photo confirmation is done and backend updated status
+    return _orderWithDetails!.status == 'DELIVERED';
   }
 
   /// Lấy ID của vehicle assignment
@@ -223,5 +260,192 @@ class OrderDetailViewModel extends BaseViewModel {
     _startDeliveryState = StartDeliveryState.initial;
     _startDeliveryErrorMessage = '';
     notifyListeners();
+  }
+
+  /// Upload photo completion at delivery point
+  Future<bool> uploadPhotoCompletion({
+    required File imageFile,
+    String? description,
+  }) async {
+    if (_orderWithDetails == null) {
+      debugPrint('❌ Cannot upload photo: no order details');
+      return false;
+    }
+
+    // Get vehicle assignment ID from first order detail
+    final vehicleAssignmentId = _orderWithDetails!.orderDetails.isNotEmpty &&
+            _orderWithDetails!.orderDetails.first.vehicleAssignment != null
+        ? _orderWithDetails!.orderDetails.first.vehicleAssignment!.id
+        : null;
+
+    if (vehicleAssignmentId == null) {
+      debugPrint('❌ Cannot upload photo: no vehicle assignment ID');
+      _photoUploadError = 'Không tìm thấy thông tin phân công xe';
+      notifyListeners();
+      return false;
+    }
+
+    _isUploadingPhoto = true;
+    _photoUploadError = '';
+    notifyListeners();
+
+    debugPrint('📸 Uploading photo completion...');
+    final result = await _photoCompletionDataSource.uploadPhotoCompletion(
+      imageFile: imageFile,
+      vehicleAssignmentId: vehicleAssignmentId,
+      description: description ?? 'Photo completion at delivery',
+    );
+
+    return result.fold(
+      (failure) {
+        _isUploadingPhoto = false;
+        _photoUploadError = failure.message;
+        debugPrint('❌ Failed to upload photo completion: ${failure.message}');
+        notifyListeners();
+        return false;
+      },
+      (success) {
+        _isUploadingPhoto = false;
+        debugPrint('✅ Photo completion uploaded successfully');
+        notifyListeners();
+        return true;
+      },
+    );
+  }
+
+  /// Upload multiple photo completions at delivery point
+  Future<bool> uploadMultiplePhotoCompletion({
+    required List<File> imageFiles,
+    String? description,
+  }) async {
+    if (_orderWithDetails == null) {
+      debugPrint('❌ Cannot upload photos: no order details');
+      return false;
+    }
+
+    if (imageFiles.isEmpty) {
+      debugPrint('❌ Cannot upload photos: no images provided');
+      _photoUploadError = 'Vui lòng chụp ít nhất một ảnh';
+      notifyListeners();
+      return false;
+    }
+
+    // Get vehicle assignment ID from first order detail
+    final vehicleAssignmentId = _orderWithDetails!.orderDetails.isNotEmpty &&
+            _orderWithDetails!.orderDetails.first.vehicleAssignment != null
+        ? _orderWithDetails!.orderDetails.first.vehicleAssignment!.id
+        : null;
+
+    if (vehicleAssignmentId == null) {
+      debugPrint('❌ Cannot upload photos: no vehicle assignment ID');
+      _photoUploadError = 'Không tìm thấy thông tin phân công xe';
+      notifyListeners();
+      return false;
+    }
+
+    _isUploadingPhoto = true;
+    _photoUploadError = '';
+    notifyListeners();
+
+    debugPrint('📸 Uploading ${imageFiles.length} photo completions...');
+    final result = await _photoCompletionDataSource.uploadMultiplePhotoCompletion(
+      imageFiles: imageFiles,
+      vehicleAssignmentId: vehicleAssignmentId,
+      description: description ?? 'Photo completion at delivery',
+    );
+
+    return result.fold(
+      (failure) {
+        _isUploadingPhoto = false;
+        _photoUploadError = failure.message;
+        debugPrint('❌ Failed to upload photo completions: ${failure.message}');
+        notifyListeners();
+        return false;
+      },
+      (success) {
+        _isUploadingPhoto = false;
+        debugPrint('✅ Photo completions uploaded successfully');
+        notifyListeners();
+        return true;
+      },
+    );
+  }
+
+  /// Load fuel consumption data to get ID for odometer update
+  Future<void> loadFuelConsumptionData() async {
+    if (_orderWithDetails == null) return;
+
+    final vehicleAssignmentId = _orderWithDetails!.orderDetails.isNotEmpty &&
+            _orderWithDetails!.orderDetails.first.vehicleAssignment != null
+        ? _orderWithDetails!.orderDetails.first.vehicleAssignment!.id
+        : null;
+
+    if (vehicleAssignmentId == null) return;
+
+    debugPrint('🔍 Loading fuel consumption data...');
+    final result = await _fuelConsumptionDataSource.getByVehicleAssignmentId(vehicleAssignmentId);
+    
+    result.fold(
+      (failure) {
+        debugPrint('⚠️ Failed to load fuel consumption data: ${failure.message}');
+      },
+      (response) {
+        debugPrint('📋 Fuel consumption response: $response');
+        debugPrint('   - Type: ${response.runtimeType}');
+        if (response['success'] == true && response['data'] != null) {
+          _fuelConsumptionId = response['data']['id'];
+          debugPrint('✅ Fuel consumption ID loaded: $_fuelConsumptionId');
+        } else {
+          debugPrint('⚠️ Response success=false or data is null');
+          debugPrint('   - success: ${response['success']}');
+          debugPrint('   - data: ${response['data']}');
+        }
+      },
+    );
+  }
+
+  /// Upload final odometer reading at carrier
+  Future<bool> uploadOdometerEnd({
+    required File odometerImage,
+    required double odometerReading,
+  }) async {
+    // Load fuel consumption ID if not already loaded
+    if (_fuelConsumptionId == null) {
+      await loadFuelConsumptionData();
+    }
+
+    if (_fuelConsumptionId == null) {
+      debugPrint('❌ Cannot upload odometer: no fuel consumption ID');
+      _odometerUploadError = 'Không tìm thấy thông tin nhiên liệu';
+      notifyListeners();
+      return false;
+    }
+
+    _isUploadingOdometer = true;
+    _odometerUploadError = '';
+    notifyListeners();
+
+    debugPrint('📸 Uploading odometer end reading...');
+    final result = await _fuelConsumptionDataSource.updateFinalReading(
+      fuelConsumptionId: _fuelConsumptionId!,
+      odometerReadingAtEnd: odometerReading,
+      odometerImage: odometerImage,
+    );
+
+    return result.fold(
+      (failure) {
+        _isUploadingOdometer = false;
+        _odometerUploadError = failure.message;
+        debugPrint('❌ Failed to upload odometer end: ${failure.message}');
+        notifyListeners();
+        return false;
+      },
+      (success) {
+        _isUploadingOdometer = false;
+        debugPrint('✅ Odometer end reading uploaded successfully');
+        notifyListeners();
+        return true;
+      },
+    );
   }
 }

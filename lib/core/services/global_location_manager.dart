@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'enhanced_location_tracking_service.dart';
 import 'service_locator.dart';
+import 'navigation_state_service.dart';
 
 /// Global Location Manager - Quản lý location tracking xuyên suốt app lifecycle
 /// Đảm bảo WebSocket connection không bị ngắt khi navigate giữa các màn hình
@@ -56,6 +57,7 @@ class GlobalLocationManager {
   String? get currentLicensePlate => _currentLicensePlate;
   DateTime? get trackingStartTime => _trackingStartTime;
   bool get isPrimaryDriver => _isPrimaryDriver;
+  bool get isSimulationMode => _isSimulationMode;
   String? get currentScreen => _currentScreen;
   Set<String> get activeScreens => Set.unmodifiable(_activeScreens);
   
@@ -100,10 +102,14 @@ class GlobalLocationManager {
       debugPrint('   - Is Primary Driver: $isPrimaryDriver');
       debugPrint('   - Is Simulation Mode: $isSimulationMode');
 
+      // Store simulation mode for reconnection (before checking primary driver)
+      _isSimulationMode = isSimulationMode;
+      
       // Chỉ kết nối WebSocket nếu là tài xế chính
       if (!isPrimaryDriver) {
         debugPrint('⚠️ Secondary driver detected - WebSocket connection will not be established');
         debugPrint('   Secondary driver will use polling for location updates');
+        debugPrint('   - Simulation mode: $isSimulationMode');
         
         // Vẫn set trạng thái tracking để UI có thể hoạt động
         _isGlobalTrackingActive = true;
@@ -124,9 +130,6 @@ class GlobalLocationManager {
         debugPrint('✅ Global location manager initialized for secondary driver (listening mode)');
         return true;
       }
-
-      // Store simulation mode for reconnection
-      _isSimulationMode = isSimulationMode;
       
       // Start enhanced location tracking service chỉ cho tài xế chính
       // CRITICAL: Disable GPS trong simulation mode
@@ -173,6 +176,9 @@ class GlobalLocationManager {
         _enhancedService.statsStream.listen(_handleGlobalStats);
 
         _trackingStateController.add('TRACKING_STARTED');
+        
+        // Save navigation state to persistent storage
+        await saveNavigationState();
         
         debugPrint('✅ Global location tracking started successfully');
         return true;
@@ -262,6 +268,9 @@ class GlobalLocationManager {
       
       // Stop enhanced tracking service
       await _enhancedService.stopTracking();
+
+      // Clear saved navigation state
+      await clearSavedNavigationState();
 
       // Clear state
       _isGlobalTrackingActive = false;
@@ -388,7 +397,13 @@ class GlobalLocationManager {
 
   /// Send location update manually
   /// Only primary drivers can send location updates
-  Future<void> sendLocationUpdate(double latitude, double longitude, {double? bearing, double? speed}) async {
+  Future<void> sendLocationUpdate(
+    double latitude, 
+    double longitude, {
+    double? bearing, 
+    double? speed,
+    int? segmentIndex,
+  }) async {
     if (!_isGlobalTrackingActive) {
       debugPrint('⚠️ Cannot send location: global tracking not active');
       return;
@@ -405,6 +420,16 @@ class GlobalLocationManager {
       bearing: bearing,
       speed: speed,
     );
+    
+    // Save position to persistent storage (especially important for simulation mode)
+    if (_isSimulationMode) {
+      await saveNavigationState(
+        latitude: latitude,
+        longitude: longitude,
+        bearing: bearing,
+        segmentIndex: segmentIndex,
+      );
+    }
   }
 
   /// Get comprehensive status
@@ -525,6 +550,130 @@ class GlobalLocationManager {
       
     } catch (e) {
       debugPrint('❌ Failed to start position stream: $e');
+    }
+  }
+
+  /// Update simulation mode (called when user starts simulation manually)
+  void updateSimulationMode(bool isSimulationMode) {
+    debugPrint('🔄 Updating simulation mode: $_isSimulationMode → $isSimulationMode');
+    _isSimulationMode = isSimulationMode;
+  }
+
+  /// Save current navigation state to persistent storage
+  Future<void> saveNavigationState({
+    double? latitude,
+    double? longitude,
+    double? bearing,
+    int? segmentIndex,
+  }) async {
+    if (!_isGlobalTrackingActive || _currentOrderId == null) {
+      return;
+    }
+
+    try {
+      final stateService = getIt<NavigationStateService>();
+      
+      if (latitude != null && longitude != null) {
+        // Update position
+        await stateService.updateCurrentPosition(
+          latitude: latitude,
+          longitude: longitude,
+          bearing: bearing,
+          segmentIndex: segmentIndex,
+        );
+      } else {
+        // Save initial state
+        await stateService.saveNavigationState(
+          orderId: _currentOrderId!,
+          vehicleId: _currentVehicleId ?? '',
+          licensePlate: _currentLicensePlate ?? '',
+          isSimulationMode: _isSimulationMode,
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error saving navigation state: $e');
+    }
+  }
+
+  /// Try to restore navigation state from persistent storage
+  /// Returns true if state was restored and tracking was resumed
+  Future<bool> tryRestoreNavigationState() async {
+    try {
+      debugPrint('🔍 tryRestoreNavigationState - Starting...');
+      
+      final stateService = getIt<NavigationStateService>();
+      debugPrint('   - NavigationStateService obtained');
+      
+      final savedState = stateService.getSavedNavigationState();
+      debugPrint('   - Saved state: ${savedState?.toString() ?? "null"}');
+
+      if (savedState == null) {
+        debugPrint('ℹ️ No saved navigation state found in SharedPreferences');
+        return false;
+      }
+
+      debugPrint('🔄 Found saved navigation state:');
+      debugPrint('   - Order ID: ${savedState.orderId}');
+      debugPrint('   - Vehicle ID: ${savedState.vehicleId}');
+      debugPrint('   - License Plate: ${savedState.licensePlate}');
+      debugPrint('   - Simulation Mode: ${savedState.isSimulationMode}');
+      debugPrint('   - Tracking Start Time: ${savedState.trackingStartTime}');
+
+      // Check if state is still valid (not too old)
+      if (savedState.trackingStartTime != null) {
+        final age = DateTime.now().difference(savedState.trackingStartTime!);
+        debugPrint('   - State age: ${age.inHours} hours');
+        if (age.inHours > 24) {
+          debugPrint('⚠️ Saved state is too old (${age.inHours} hours), clearing...');
+          await stateService.clearNavigationState();
+          return false;
+        }
+      }
+
+      // Try to reconnect with saved state
+      debugPrint('🔄 Attempting to restore tracking for order: ${savedState.orderId}');
+      
+      final success = await startGlobalTracking(
+        orderId: savedState.orderId,
+        vehicleId: savedState.vehicleId ?? '',
+        licensePlateNumber: savedState.licensePlate ?? '',
+        isSimulationMode: savedState.isSimulationMode,
+        initiatingScreen: 'AutoRestore',
+      );
+
+      if (success) {
+        debugPrint('✅ Navigation state restored successfully');
+        debugPrint('   - Current order ID: $_currentOrderId');
+        debugPrint('   - Is tracking active: $_isGlobalTrackingActive');
+        debugPrint('   - Simulation mode in manager: $_isSimulationMode');
+        debugPrint('   - Simulation mode from saved state: ${savedState.isSimulationMode}');
+        
+        // Double check that simulation mode was set correctly
+        if (_isSimulationMode != savedState.isSimulationMode) {
+          debugPrint('⚠️ WARNING: Simulation mode mismatch!');
+          debugPrint('   Expected: ${savedState.isSimulationMode}, Got: $_isSimulationMode');
+        }
+        
+        return true;
+      } else {
+        debugPrint('❌ Failed to restore navigation state - startGlobalTracking returned false');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error restoring navigation state: $e');
+      debugPrint('Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  /// Clear saved navigation state (call when trip is completed)
+  Future<void> clearSavedNavigationState() async {
+    try {
+      final stateService = getIt<NavigationStateService>();
+      await stateService.clearNavigationState();
+      debugPrint('✅ Saved navigation state cleared');
+    } catch (e) {
+      debugPrint('❌ Error clearing saved navigation state: $e');
     }
   }
 

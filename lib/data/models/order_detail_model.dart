@@ -118,6 +118,7 @@ class VehicleAssignmentModel extends VehicleAssignment {
     required super.status,
     required super.trackingCode,
     required List<JourneyHistoryModel> super.journeyHistories,
+    List<OrderSealModel> super.orderSeals = const [],
   });
 
   factory VehicleAssignmentModel.fromJson(Map<String, dynamic> json) {
@@ -139,6 +140,11 @@ class VehicleAssignmentModel extends VehicleAssignment {
               ?.map((e) => JourneyHistoryModel.fromJson(e))
               .toList() ??
           [],
+      orderSeals:
+          (json['orderSeals'] as List<dynamic>?)
+              ?.map((e) => OrderSealModel.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 
@@ -156,6 +162,9 @@ class VehicleAssignmentModel extends VehicleAssignment {
       'trackingCode': trackingCode,
       'journeyHistories': journeyHistories
           .map((e) => (e as JourneyHistoryModel).toJson())
+          .toList(),
+      'orderSeals': orderSeals
+          .map((e) => (e as OrderSealModel).toJson())
           .toList(),
     };
   }
@@ -320,6 +329,52 @@ class JourneySegmentModel extends JourneySegment {
       'status': status,
       'createdAt': createdAt.toIso8601String(),
       'modifiedAt': modifiedAt.toIso8601String(),
+    };
+  }
+}
+
+class OrderSealModel extends OrderSeal {
+  const OrderSealModel({
+    required super.id,
+    required super.description,
+    required super.sealDate,
+    required super.status,
+    required super.sealId,
+    required super.sealCode,
+    super.sealAttachedImage,
+    super.sealRemovalTime,
+    super.sealRemovalReason,
+  });
+
+  factory OrderSealModel.fromJson(Map<String, dynamic> json) {
+    return OrderSealModel(
+      id: json['id'] ?? '',
+      description: json['description'] ?? '',
+      sealDate: json['sealDate'] != null
+          ? DateTime.parse(json['sealDate'])
+          : DateTime.now(),
+      status: json['status'] ?? '',
+      sealId: json['sealId'] ?? '',
+      sealCode: json['sealCode'] ?? '',
+      sealAttachedImage: json['sealAttachedImage'],
+      sealRemovalTime: json['sealRemovalTime'] != null
+          ? DateTime.parse(json['sealRemovalTime'])
+          : null,
+      sealRemovalReason: json['sealRemovalReason'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'description': description,
+      'sealDate': sealDate.toIso8601String(),
+      'status': status,
+      'sealId': sealId,
+      'sealCode': sealCode,
+      'sealAttachedImage': sealAttachedImage,
+      'sealRemovalTime': sealRemovalTime?.toIso8601String(),
+      'sealRemovalReason': sealRemovalReason,
     };
   }
 }

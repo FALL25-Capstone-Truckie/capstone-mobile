@@ -1,11 +1,12 @@
 import 'dart:io';
-import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../../app/app_routes.dart';
+import '../../../../../core/services/global_location_manager.dart';
 import '../../../../../core/services/ocr_service.dart';
+import '../../../../../core/services/service_locator.dart';
 import '../../../../../core/utils/driver_role_checker.dart';
 import '../../../../../domain/entities/order_with_details.dart';
 import '../../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
@@ -13,16 +14,16 @@ import '../../../../../presentation/theme/app_colors.dart';
 import '../../../../../presentation/theme/app_text_styles.dart';
 import '../../viewmodels/order_detail_viewmodel.dart';
 
-class StartDeliverySection extends StatefulWidget {
+class FinalOdometerSection extends StatefulWidget {
   final OrderWithDetails order;
 
-  const StartDeliverySection({super.key, required this.order});
+  const FinalOdometerSection({super.key, required this.order});
 
   @override
-  State<StartDeliverySection> createState() => _StartDeliverySectionState();
+  State<FinalOdometerSection> createState() => _FinalOdometerSectionState();
 }
 
-class _StartDeliverySectionState extends State<StartDeliverySection> {
+class _FinalOdometerSectionState extends State<FinalOdometerSection> {
   final TextEditingController _odometerController = TextEditingController();
   File? _odometerImage;
   final ImagePicker _picker = ImagePicker();
@@ -31,6 +32,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
   bool _showForm = false;
   bool _showImagePreview = false;
   bool _isProcessingOCR = false;
+  final GlobalLocationManager _globalLocationManager = getIt<GlobalLocationManager>();
 
   @override
   void dispose() {
@@ -81,7 +83,6 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         _isProcessingOCR = true;
       });
 
-      // Tự động xử lý OCR để đọc số từ ảnh
       await _processOCR();
     }
   }
@@ -98,7 +99,6 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         _isProcessingOCR = true;
       });
 
-      // Tự động xử lý OCR để đọc số từ ảnh
       await _processOCR();
     }
   }
@@ -115,9 +115,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         setState(() {
           _odometerController.text = extractedText;
         });
-
       } else {
-        // Không đọc được số, hiển thị thông báo
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -158,21 +156,10 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
     });
   }
 
-  Future<void> _startDelivery(BuildContext context) async {
-    // Kiểm tra driver role trước khi cho phép thực hiện action
+  Future<void> _confirmOdometerReading(BuildContext context) async {
     final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    
     if (!DriverRoleChecker.canPerformActions(widget.order, authViewModel)) {
-      // Không hiển thị thông báo, chỉ return để thân thiện với user
-      return;
-    }
-
-    if (_odometerController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng chụp ảnh công tơ mét để đọc số'),
-          backgroundColor: Colors.orange,
-        ),
-      );
       return;
     }
 
@@ -186,53 +173,69 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       return;
     }
 
+    if (_odometerController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập số km'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final reading = double.tryParse(_odometerController.text);
+    if (reading == null || reading <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Số km không hợp lệ'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
 
-    debugPrint('🚀 Bắt đầu gửi thông tin công tơ mét...');
-    debugPrint('🚀 Chỉ số công tơ mét: ${_odometerController.text}');
-    debugPrint('🚀 Đường dẫn ảnh: ${_odometerImage!.path}');
+    debugPrint('📸 Uploading final odometer reading...');
+    debugPrint('   - Reading: $reading km');
+    debugPrint('   - Image: ${_odometerImage!.path}');
 
     try {
       final viewModel = Provider.of<OrderDetailViewModel>(
         context,
         listen: false,
       );
-      final success = await viewModel.startDelivery(
-        odometerReading: Decimal.parse(_odometerController.text),
+      final success = await viewModel.uploadOdometerEnd(
         odometerImage: _odometerImage!,
+        odometerReading: reading,
       );
 
-      debugPrint('🚀 Kết quả gửi thông tin: $success');
+      if (success && mounted) {
+        _globalLocationManager.stopGlobalTracking(reason: 'Trip completed - odometer uploaded');
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã hoàn thành chuyến xe thành công!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
 
-      if (success) {
-        // Lưu lại context và orderId để sử dụng sau khi tải lại order
-        final navigatorContext = context;
-        final orderId = widget.order.id;
-
-        // Chuyển đến màn hình dẫn đường ngay lập tức, không đợi tải lại dữ liệu order
-        debugPrint('🚀 Chuyển đến màn hình dẫn đường với orderId: $orderId');
-
-        if (mounted) {
-          Navigator.of(navigatorContext).pushReplacementNamed(
-            AppRoutes.navigation,
-            arguments: {'orderId': orderId, 'isSimulationMode': false},
-          );
-        }
-      } else {
-        debugPrint('❌ Lỗi: ${viewModel.startDeliveryErrorMessage}');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(viewModel.startDeliveryErrorMessage),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        Navigator.of(context).pushReplacementNamed(AppRoutes.orders);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(viewModel.odometerUploadError.isNotEmpty
+                ? viewModel.odometerUploadError
+                : 'Không thể tải ảnh lên. Vui lòng thử lại.'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
-      debugPrint('❌ Exception khi bắt đầu chuyến xe: $e');
+      debugPrint('❌ Exception: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -255,11 +258,10 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
     final viewModel = Provider.of<OrderDetailViewModel>(context);
     final authViewModel = Provider.of<AuthViewModel>(context);
 
-    if (!viewModel.canStartDelivery()) {
+    if (!viewModel.canUploadFinalOdometer()) {
       return const SizedBox.shrink();
     }
 
-    // Kiểm tra driver role - ẩn toàn bộ section nếu không có quyền
     if (!DriverRoleChecker.canPerformActions(widget.order, authViewModel)) {
       return const SizedBox.shrink();
     }
@@ -267,19 +269,18 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
     if (_showImagePreview) {
       return _buildImagePreview();
     } else if (_showForm) {
-      return _buildForm();
+      return _buildForm(context);
     } else {
       return _buildButton();
     }
   }
-
 
   Widget _buildImagePreview() {
     if (_odometerImage == null) {
       setState(() {
         _showImagePreview = false;
       });
-      return _buildForm();
+      return _buildForm(context);
     }
 
     return Container(
@@ -297,7 +298,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Xem ảnh công tơ mét',
+                'Xem ảnh đồng hồ',
                 style: AppTextStyles.titleSmall.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -358,16 +359,16 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.secondary],
+          colors: [AppColors.success, Colors.green.shade700],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
+            color: AppColors.success.withOpacity(0.3),
             blurRadius: 8,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -386,17 +387,19 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.play_circle_outline, size: 24),
+          children: const [
+            Icon(Icons.check_circle_outline, size: 24),
             SizedBox(width: 8),
-            Text('BẮT ĐẦU CHUYẾN XE'),
+            Text('HOÀN THÀNH CHUYẾN XE'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildForm() {
+  Widget _buildForm(BuildContext context) {
+    final viewModel = Provider.of<OrderDetailViewModel>(context);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -409,7 +412,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Chụp ảnh công tơ mét đầu',
+            'Chụp ảnh đồng hồ công tơ mét cuối',
             style: AppTextStyles.titleSmall.copyWith(
               fontWeight: FontWeight.bold,
             ),
@@ -479,7 +482,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Chụp ảnh công tơ mét',
+                        'Chụp ảnh đồng hồ',
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 14,
@@ -496,7 +499,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             readOnly: true,
             decoration: InputDecoration(
-              labelText: 'Chỉ số công tơ mét',
+              labelText: 'Số km hiện tại',
               hintText: 'Sẽ tự động điền từ ảnh',
               prefixIcon: const Icon(Icons.speed),
               suffixText: 'km',
@@ -511,6 +514,27 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
             ),
           ),
           const SizedBox(height: 12),
+          if (viewModel.odometerUploadError.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      viewModel.odometerUploadError,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -521,7 +545,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
                     foregroundColor: Colors.black87,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: const Text('HủY'),
+                  child: const Text('HỦY'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -529,9 +553,9 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
                 child: ElevatedButton(
                   onPressed: _isLoading || _isProcessingOCR
                       ? null
-                      : () => _startDelivery(context),
+                      : () => _confirmOdometerReading(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: AppColors.success,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),

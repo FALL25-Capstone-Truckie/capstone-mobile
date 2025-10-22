@@ -91,6 +91,7 @@ class VehicleAssignment extends Equatable {
   final String status;
   final String trackingCode;
   final List<JourneyHistory> journeyHistories;
+  final List<OrderSeal> orderSeals;
 
   const VehicleAssignment({
     required this.id,
@@ -100,6 +101,7 @@ class VehicleAssignment extends Equatable {
     required this.status,
     required this.trackingCode,
     required this.journeyHistories,
+    this.orderSeals = const [],
   });
 
   @override
@@ -111,6 +113,7 @@ class VehicleAssignment extends Equatable {
     status,
     trackingCode,
     journeyHistories,
+    orderSeals,
   ];
 }
 
@@ -240,5 +243,48 @@ class JourneySegment extends Equatable {
     status,
     createdAt,
     modifiedAt,
+  ];
+}
+
+class OrderSeal extends Equatable {
+  final String id;
+  final String description;
+  final DateTime sealDate;
+  final String status; // ACTIVE, IN_USED, REMOVED, USED
+  final String sealId;
+  final String sealCode;
+  final String? sealAttachedImage;
+  final DateTime? sealRemovalTime;
+  final String? sealRemovalReason;
+
+  const OrderSeal({
+    required this.id,
+    required this.description,
+    required this.sealDate,
+    required this.status,
+    required this.sealId,
+    required this.sealCode,
+    this.sealAttachedImage,
+    this.sealRemovalTime,
+    this.sealRemovalReason,
+  });
+
+  bool get isActive => status == 'ACTIVE';
+  bool get isInUsed => status == 'IN_USED';
+  bool get isRemoved => status == 'REMOVED';
+  bool get isUsed => status == 'USED';
+  bool get canBeSelected => status == 'ACTIVE';
+
+  @override
+  List<Object?> get props => [
+    id,
+    description,
+    sealDate,
+    status,
+    sealId,
+    sealCode,
+    sealAttachedImage,
+    sealRemovalTime,
+    sealRemovalReason,
   ];
 }

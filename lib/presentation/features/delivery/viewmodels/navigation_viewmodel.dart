@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../../core/services/service_locator.dart';
+import '../../../../data/datasources/order_data_source.dart';
 import '../../../../domain/entities/order_with_details.dart';
 import '../../../../domain/usecases/orders/get_order_details_usecase.dart';
 
@@ -18,6 +19,7 @@ class RouteSegment {
 class NavigationViewModel extends ChangeNotifier {
   final GetOrderDetailsUseCase _getOrderDetailsUseCase =
       getIt<GetOrderDetailsUseCase>();
+  final OrderDataSource _orderDataSource = getIt<OrderDataSource>();
 
   OrderWithDetails? orderWithDetails;
   List<RouteSegment> routeSegments = [];
@@ -46,6 +48,10 @@ class NavigationViewModel extends ChangeNotifier {
   LatLng? _endPoint;
   double _interpolationProgress = 0.0; // 0.0 to 1.0
   final int _interpolationSteps = 10; // Number of steps between route points
+
+  // Near delivery tracking (3km threshold)
+  bool _hasNotifiedNearDelivery = false;
+  static const double _nearDeliveryThresholdKm = 3.0;
 
   // Error handling
   String _errorMessage = '';
@@ -254,6 +260,9 @@ class NavigationViewModel extends ChangeNotifier {
     }
 
     _isSimulating = true;
+    
+    // Reset near delivery flag when starting new simulation
+    resetNearDeliveryFlag();
     _currentSimulationSpeed = simulationSpeed; // Lưu tốc độ simulation
     debugPrint('✅ Simulation state set to true');
 
@@ -261,8 +270,9 @@ class NavigationViewModel extends ChangeNotifier {
     _locationUpdateCallback = onLocationUpdate;
     _segmentCompleteCallback = onSegmentComplete;
 
-    // Set initial location and bearing
-    if (routeSegments.isNotEmpty && routeSegments[0].points.isNotEmpty) {
+    // Set initial location and bearing ONLY if not already restored
+    if (currentLocation == null && routeSegments.isNotEmpty && routeSegments[0].points.isNotEmpty) {
+      debugPrint('📍 No restored position - starting from beginning');
       currentSegmentIndex = 0;
       // Initialize point indices for all segments
       _currentPointIndices = List.generate(routeSegments.length, (_) => 0);
@@ -282,8 +292,16 @@ class NavigationViewModel extends ChangeNotifier {
         currentBearing = 0;
         currentSpeed = 0.0;
       }
+    } else if (currentLocation != null) {
+      debugPrint('📍 Using restored position - continuing from segment $currentSegmentIndex');
+      // Position already restored, just ensure point indices are initialized
+      if (_currentPointIndices.isEmpty) {
+        _currentPointIndices = List.generate(routeSegments.length, (_) => 0);
+      }
+    }
 
-      // Notify immediately with initial position
+    // Notify immediately with current position (restored or initial)
+    if (currentLocation != null) {
       onLocationUpdate(currentLocation!, currentBearing);
     }
 
@@ -306,10 +324,10 @@ class NavigationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _updateLocation(
+  Future<void> _updateLocation(
     Function(LatLng, double?) onLocationUpdate,
     Function(int, bool) onSegmentComplete,
-  ) {
+  ) async {
     if (routeSegments.isEmpty || currentSegmentIndex >= routeSegments.length) {
       _simulationTimer?.cancel();
       _isSimulating = false;
@@ -321,16 +339,33 @@ class NavigationViewModel extends ChangeNotifier {
     final points = currentSegment.points;
 
     if (points.isEmpty) {
-      _moveToNextSegment(onSegmentComplete);
+      await _moveToNextSegment(onSegmentComplete);
       return;
     }
 
     // Get current point index
     final currentPointIndex = _currentPointIndices[currentSegmentIndex];
 
-    // If we've reached the end of this segment
-    if (currentPointIndex >= points.length - 1) {
-      _moveToNextSegment(onSegmentComplete);
+    // If we've reached PAST the end of this segment (no more points to interpolate to)
+    // Note: points.length - 1 is the last point index
+    // We need currentPointIndex + 1 to exist for interpolation
+    if (currentPointIndex >= points.length) {
+      debugPrint('🏁 Reached PAST end of segment $currentSegmentIndex');
+      debugPrint('   - currentPointIndex: $currentPointIndex, points.length: ${points.length}');
+      debugPrint('   - Calling _moveToNextSegment()');
+      await _moveToNextSegment(onSegmentComplete);
+      return;
+    }
+    
+    // Special case: if at last point, set location and complete segment
+    if (currentPointIndex == points.length - 1) {
+      debugPrint('🎯 At LAST point of segment $currentSegmentIndex');
+      debugPrint('   - currentPointIndex: $currentPointIndex, points.length: ${points.length}');
+      currentLocation = points[currentPointIndex];
+      currentSpeed = 0.0; // Stop at waypoint
+      debugPrint('   - Location: ${currentLocation!.latitude}, ${currentLocation!.longitude}');
+      debugPrint('   - Calling _moveToNextSegment()');
+      await _moveToNextSegment(onSegmentComplete);
       return;
     }
 
@@ -375,12 +410,26 @@ class NavigationViewModel extends ChangeNotifier {
 
     // Notify listeners with interpolated location
     onLocationUpdate(currentLocation!, currentBearing);
+    
+    // Check if near delivery point (3km threshold) and update status if needed
+    checkAndUpdateNearDelivery();
+    
     notifyListeners();
   }
 
-  void _moveToNextSegment(Function(int, bool) onSegmentComplete) {
+  Future<void> _moveToNextSegment(Function(int, bool) onSegmentComplete) async {
+    debugPrint('📍 _moveToNextSegment() called');
+    debugPrint('   - currentSegmentIndex: $currentSegmentIndex');
+    debugPrint('   - routeSegments.length: ${routeSegments.length}');
+    
     // Notify that current segment is complete
     final isLastSegment = currentSegmentIndex >= routeSegments.length - 1;
+    debugPrint('   - isLastSegment: $isLastSegment');
+    
+    // Note: Order status update is now handled by backend when photo is uploaded
+    // No need to update status here anymore
+    
+    debugPrint('   - Calling onSegmentComplete($currentSegmentIndex, $isLastSegment)');
     onSegmentComplete(currentSegmentIndex, isLastSegment);
 
     // Move to next segment if available
@@ -404,6 +453,41 @@ class NavigationViewModel extends ChangeNotifier {
       currentSpeed = 0.0; // Reset tốc độ khi kết thúc
     }
 
+    notifyListeners();
+  }
+
+  // Manually move to next segment (for after action confirmation)
+  void moveToNextSegmentManually() {
+    debugPrint('⏭️ Manually moving to next segment...');
+    debugPrint('   - Current segment: $currentSegmentIndex');
+    
+    final isLastSegment = currentSegmentIndex >= routeSegments.length - 1;
+    if (isLastSegment) {
+      debugPrint('⚠️ Already at last segment, cannot move forward');
+      return;
+    }
+    
+    // Move to next segment
+    currentSegmentIndex++;
+    if (_currentPointIndices.length <= currentSegmentIndex) {
+      _currentPointIndices.add(0);
+    } else {
+      _currentPointIndices[currentSegmentIndex] = 0;
+    }
+    
+    // Set location to first point of new segment
+    final newSegment = routeSegments[currentSegmentIndex];
+    if (newSegment.points.isNotEmpty) {
+      currentLocation = newSegment.points.first;
+      debugPrint('✅ Moved to segment $currentSegmentIndex');
+      debugPrint('   - New location: ${currentLocation!.latitude}, ${currentLocation!.longitude}');
+    }
+    
+    // Reset interpolation
+    _startPoint = null;
+    _endPoint = null;
+    _interpolationProgress = 0.0;
+    
     notifyListeners();
   }
 
@@ -527,6 +611,152 @@ class NavigationViewModel extends ChangeNotifier {
   // Getter to check if simulation is running
   bool get isSimulating => _isSimulating;
 
+  /// Restore simulation position from saved state
+  void restoreSimulationPosition({
+    required int segmentIndex,
+    required double latitude,
+    required double longitude,
+  }) {
+    debugPrint('🔄 Restoring simulation position:');
+    debugPrint('   - Segment index: $segmentIndex');
+    debugPrint('   - Position: ($latitude, $longitude)');
+    
+    if (routeSegments.isEmpty) {
+      debugPrint('❌ Cannot restore: no route segments');
+      return;
+    }
+    
+    if (segmentIndex >= routeSegments.length) {
+      debugPrint('❌ Cannot restore: invalid segment index');
+      return;
+    }
+    
+    // Set current segment
+    currentSegmentIndex = segmentIndex;
+    
+    // Find closest point in the segment to the saved position
+    final segment = routeSegments[segmentIndex];
+    int closestPointIndex = 0;
+    double minDistance = double.infinity;
+    
+    for (int i = 0; i < segment.points.length; i++) {
+      final point = segment.points[i];
+      final distance = _calculateDistance(
+        LatLng(latitude, longitude),
+        point,
+      );
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestPointIndex = i;
+      }
+    }
+    
+    debugPrint('   - Closest point index: $closestPointIndex');
+    debugPrint('   - Distance to closest point: ${minDistance.toStringAsFixed(2)}m');
+    
+    // Initialize point indices if not already done
+    if (_currentPointIndices.isEmpty) {
+      _currentPointIndices = List.generate(routeSegments.length, (_) => 0);
+    }
+    
+    // Set current point index for this segment
+    _currentPointIndices[segmentIndex] = closestPointIndex;
+    
+    // Set current location
+    currentLocation = segment.points[closestPointIndex];
+    
+    // Calculate bearing if we have a next point
+    if (closestPointIndex < segment.points.length - 1) {
+      final nextPoint = segment.points[closestPointIndex + 1];
+      currentBearing = _calculateBearing(currentLocation!, nextPoint);
+      
+      // Set up interpolation
+      _startPoint = currentLocation;
+      _endPoint = nextPoint;
+      _interpolationProgress = 0.0;
+    } else {
+      currentBearing = 0;
+    }
+    
+    debugPrint('✅ Position restored successfully');
+    notifyListeners();
+  }
+
+  // Jump to end of current segment (skip to destination of current route)
+  Future<void> jumpToNextSegment() async {
+    if (routeSegments.isEmpty) {
+      debugPrint('⚠️ Cannot jump: no segments');
+      return;
+    }
+
+    if (currentSegmentIndex >= routeSegments.length) {
+      debugPrint('⚠️ Cannot jump: invalid segment index');
+      return;
+    }
+
+    debugPrint('⏩ Skipping to end of current segment...');
+    debugPrint('   - Current segment: $currentSegmentIndex');
+    
+    final currentSegment = routeSegments[currentSegmentIndex];
+    
+    // Jump to END of current segment only
+    if (currentSegment.points.isNotEmpty) {
+      currentLocation = currentSegment.points.last;
+      currentSpeed = 0.0; // Stop at waypoint
+      
+      // Update order status based on segment completion
+      // Segment 1 = Delivery point
+      if (currentSegmentIndex == 1 && orderWithDetails != null) {
+        debugPrint('🎯 Skipped to delivery point! Updating order statuses...');
+        await _updateOrderStatusesForDelivery();
+      }
+      
+      // Calculate bearing to next segment if available
+      if (currentSegmentIndex + 1 < routeSegments.length) {
+        final nextSegment = routeSegments[currentSegmentIndex + 1];
+        if (nextSegment.points.isNotEmpty) {
+          currentBearing = _calculateBearing(currentLocation!, nextSegment.points.first);
+        }
+      } else {
+        currentBearing = 0.0;
+      }
+      
+      // Update point index to last point
+      // The next simulation tick will detect this and trigger completion
+      final lastPointIndex = currentSegment.points.length - 1;
+      
+      // Ensure array has enough elements
+      while (_currentPointIndices.length <= currentSegmentIndex) {
+        _currentPointIndices.add(0);
+      }
+      _currentPointIndices[currentSegmentIndex] = lastPointIndex;
+      
+      debugPrint('✅ Skipped to END of segment $currentSegmentIndex');
+      debugPrint('   - Location: ${currentLocation!.latitude}, ${currentLocation!.longitude}');
+      debugPrint('   - Set currentPointIndex to: $lastPointIndex');
+      debugPrint('   - Next tick will detect end and trigger completion');
+    }
+    
+    // Reset interpolation to force re-check on next tick
+    _startPoint = null;
+    _endPoint = null;
+    _interpolationProgress = 0.0;
+    
+    // CRITICAL: Ensure simulation is running to detect completion
+    debugPrint('🔍 Checking simulation state after jump:');
+    debugPrint('   - _isSimulating: $_isSimulating');
+    debugPrint('   - _simulationTimer?.isActive: ${_simulationTimer?.isActive}');
+    
+    if (!_isSimulating || _simulationTimer?.isActive != true) {
+      debugPrint('⚠️ WARNING: Simulation not running after jump!');
+      debugPrint('   - This will prevent automatic detection of segment completion');
+      debugPrint('   - Make sure simulation is started before jumping');
+    }
+    
+    notifyListeners();
+  }
+
   // Helper method to translate point names to Vietnamese
   String _translatePointName(String name) {
     // Common translations
@@ -574,5 +804,117 @@ class NavigationViewModel extends ChangeNotifier {
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
     return earthRadius * c; // distance in meters
+  }
+
+  /// Check if vehicle is near delivery point (within 3km) and update order status
+  /// Only checks when in segment 1 (going to delivery) and status hasn't been updated yet
+  Future<void> checkAndUpdateNearDelivery() async {
+    // Only check if:
+    // 1. Currently in segment 1 (going to delivery point)
+    // 2. Haven't notified yet
+    // 3. Have current location
+    // 4. Have order details
+    if (currentSegmentIndex != 1 || 
+        _hasNotifiedNearDelivery || 
+        currentLocation == null || 
+        orderWithDetails == null) {
+      return;
+    }
+
+    // Get delivery point (last point of segment 1)
+    if (routeSegments.length <= 1 || routeSegments[1].points.isEmpty) {
+      return;
+    }
+
+    final deliveryPoint = routeSegments[1].points.last;
+    final distanceMeters = _calculateDistance(currentLocation!, deliveryPoint);
+    final distanceKm = distanceMeters / 1000;
+
+    debugPrint('📍 Distance to delivery: ${distanceKm.toStringAsFixed(2)} km');
+
+    // If within 3km threshold, update order status
+    if (distanceKm <= _nearDeliveryThresholdKm) {
+      debugPrint('🎯 Within 3km of delivery point! Updating order status...');
+      
+      final result = await _orderDataSource.updateToOngoingDelivered(orderWithDetails!.id);
+      result.fold(
+        (failure) {
+          debugPrint('❌ Failed to update order status: ${failure.message}');
+          // Don't throw - this is not critical, continue navigation
+        },
+        (success) {
+          _hasNotifiedNearDelivery = true;
+          debugPrint('✅ Successfully updated order status to ONGOING_DELIVERED');
+        },
+      );
+    }
+  }
+
+  /// Reset near delivery notification flag (call when starting new navigation)
+  void resetNearDeliveryFlag() {
+    _hasNotifiedNearDelivery = false;
+    debugPrint('🔄 Reset near delivery notification flag');
+  }
+
+  /// Update order status to DELIVERED when arriving at delivery point
+  Future<void> _updateOrderToDelivered() async {
+    if (orderWithDetails == null) return;
+    
+    final result = await _orderDataSource.updateToDelivered(orderWithDetails!.id);
+    result.fold(
+      (failure) {
+        debugPrint('❌ Failed to update order status to DELIVERED: ${failure.message}');
+        // Don't throw - this is not critical for navigation
+      },
+      (success) {
+        debugPrint('✅ Successfully updated order status to DELIVERED');
+      },
+    );
+  }
+
+  /// Update order statuses sequentially when arriving at delivery
+  /// First: ONGOING_DELIVERED, Then: DELIVERED
+  Future<void> _updateOrderStatusesForDelivery() async {
+    if (orderWithDetails == null) return;
+    
+    // Step 1: Update to ONGOING_DELIVERED (if not already)
+    if (!_hasNotifiedNearDelivery) {
+      debugPrint('   - Step 1: Updating to ONGOING_DELIVERED...');
+      final result1 = await _orderDataSource.updateToOngoingDelivered(orderWithDetails!.id);
+      result1.fold(
+        (failure) => debugPrint('   - ❌ Failed: ${failure.message}'),
+        (success) {
+          debugPrint('   - ✅ Updated to ONGOING_DELIVERED');
+          _hasNotifiedNearDelivery = true;
+        },
+      );
+    }
+    
+    // Step 2: Update to DELIVERED
+    debugPrint('   - Step 2: Updating to DELIVERED...');
+    await _updateOrderToDelivered();
+  }
+
+  /// Complete trip - update order status to SUCCESSFUL
+  /// Called when driver confirms delivery completion
+  Future<bool> completeTrip() async {
+    if (orderWithDetails == null) {
+      debugPrint('❌ Cannot complete trip: no order details');
+      return false;
+    }
+    
+    debugPrint('🏁 Completing trip for order ${orderWithDetails!.id}...');
+    final result = await _orderDataSource.updateToSuccessful(orderWithDetails!.id);
+    
+    return result.fold(
+      (failure) {
+        debugPrint('❌ Failed to complete trip: ${failure.message}');
+        return false;
+      },
+      (success) {
+        debugPrint('✅ Successfully completed trip - order status updated to SUCCESSFUL');
+        return true;
+      },
+    );
   }
 }

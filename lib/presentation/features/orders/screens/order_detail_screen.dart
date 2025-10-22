@@ -7,12 +7,15 @@ import '../../../../core/services/global_location_manager.dart';
 import '../../../../core/services/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
 import '../../../../core/utils/driver_role_checker.dart';
+import '../../../../domain/entities/order_status.dart';
 import '../../../../domain/entities/order_with_details.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../viewmodels/order_detail_viewmodel.dart';
 import '../viewmodels/order_list_viewmodel.dart';
 import '../widgets/order_detail/index.dart';
+import '../widgets/order_detail/delivery_confirmation_section.dart';
+import '../widgets/order_detail/final_odometer_section.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -40,7 +43,70 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     // Register this screen with GlobalLocationManager
     _globalLocationManager.registerScreen('OrderDetailScreen');
     
-    _loadOrderDetails();
+    // Load order details and try to restore navigation state
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Load order details first
+      await _loadOrderDetails();
+      
+      debugPrint('🔍 OrderDetailScreen - Checking restore conditions:');
+      debugPrint('   - Current order ID: ${widget.orderId}');
+      debugPrint('   - Order status: ${_viewModel.orderWithDetails?.status}');
+      debugPrint('   - Active tracking order: ${_globalLocationManager.currentOrderId}');
+      debugPrint('   - Is tracking active: ${_globalLocationManager.isGlobalTrackingActive}');
+      
+      // Try to restore navigation state if app was restarted during delivery
+      // Check if there's a saved navigation state for this order
+      final activeOrderId = _globalLocationManager.currentOrderId;
+      
+      if (activeOrderId == null || activeOrderId != widget.orderId) {
+        // Only try to restore if order is in active delivery state
+        final orderStatusString = _viewModel.orderWithDetails?.status;
+        if (orderStatusString != null) {
+          final orderStatus = OrderStatus.fromString(orderStatusString);
+          
+          debugPrint('   - Order status enum: ${orderStatus.name}');
+          debugPrint('   - Is active delivery: ${orderStatus.isActiveDelivery}');
+          
+          if (orderStatus.isActiveDelivery) {
+            debugPrint('🔄 Attempting to restore navigation state...');
+            // No active tracking or different order - try to restore
+            final restored = await _globalLocationManager.tryRestoreNavigationState();
+            if (restored) {
+              debugPrint('✅ Navigation state restored - WebSocket reconnected');
+              // Check if restored order matches current order
+              if (_globalLocationManager.currentOrderId == widget.orderId) {
+                if (mounted) {
+                  setState(() {}); // Update UI to show navigation button
+                }
+              }
+            } else {
+              debugPrint('❌ Failed to restore navigation state');
+            }
+          } else {
+            debugPrint('ℹ️ Order not in active delivery state (${orderStatus.toVietnamese()}), skipping restore');
+          }
+        } else {
+          debugPrint('⚠️ Order status is null, cannot check restore conditions');
+        }
+      } else {
+        debugPrint('ℹ️ Already tracking this order: $activeOrderId');
+        // Already tracking this order, just update UI
+        if (mounted) {
+          setState(() {});
+        }
+      }
+      
+      if (_authViewModel.status == AuthStatus.authenticated) {
+        // Nếu chưa có driver info hoặc cần refresh, gọi refreshDriverInfo
+        if (_authViewModel.driver == null) {
+          await _authViewModel.refreshDriverInfo();
+          // Sau khi có driver info, reload order details để cập nhật UI
+          if (mounted) {
+            setState(() {});
+          }
+        }
+      }
+    });
 
     // Rebuild UI periodically to check WebSocket status
     Future.delayed(Duration.zero, () {
@@ -64,9 +130,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   void dispose() {
     // Unregister this screen from GlobalLocationManager
     _globalLocationManager.unregisterScreen('OrderDetailScreen');
-    
-    // Tải lại danh sách đơn hàng khi màn hình chi tiết bị đóng
-    _orderListViewModel.getDriverOrders();
     super.dispose();
   }
 
@@ -82,23 +145,25 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ChangeNotifierProvider.value(value: _authViewModel),
         ChangeNotifierProvider.value(value: _orderListViewModel),
       ],
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Chi tiết đơn hàng'),
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              // Pop back to orders screen
-              Navigator.of(context).popUntil((route) {
-                return route.settings.name == AppRoutes.orders ||
-                    route.settings.name == AppRoutes.main ||
-                    route.isFirst;
-              });
-            },
-            tooltip: 'Quay lại danh sách đơn hàng',
-          ),
+      child: WillPopScope(
+        onWillPop: () async {
+          // Return true to indicate refresh is needed
+          Navigator.of(context).pop(true);
+          return false; // Prevent default pop since we handle it manually
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Chi tiết đơn hàng'),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                // Pop back with result to trigger refresh
+                Navigator.of(context).pop(true);
+              },
+              tooltip: 'Quay lại danh sách đơn hàng',
+            ),
           actions: [
             // Thêm nút refresh
             IconButton(
@@ -133,6 +198,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             }
           },
         ),
+        ),
       ),
     );
   }
@@ -141,13 +207,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final orderWithDetails = viewModel.orderWithDetails!;
     final bool canStartDelivery = viewModel.canStartDelivery();
     final bool canConfirmPreDelivery = viewModel.canConfirmPreDelivery();
+    final bool canConfirmDelivery = viewModel.canConfirmDelivery();
+    final bool canUploadFinalOdometer = viewModel.canUploadFinalOdometer();
     final bool hasRouteData = viewModel.routeSegments.isNotEmpty;
 
     return Stack(
       children: [
         SingleChildScrollView(
           padding: SystemUiService.getContentPadding(context).copyWith(
-            bottom: (canStartDelivery || canConfirmPreDelivery)
+            bottom: (canStartDelivery || canConfirmPreDelivery || canConfirmDelivery || canUploadFinalOdometer)
                 ? 100
                 : (hasRouteData
                       ? 70
@@ -186,6 +254,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
               // Chi tiết đơn hàng + Vehicle Assignment + Tài xế
               OrderDetailsSection(order: orderWithDetails),
+              SizedBox(height: 16),
+
+              // Final odometer upload section (when order is DELIVERED)
+              if (canUploadFinalOdometer)
+                FinalOdometerSection(order: orderWithDetails),
+              
               SizedBox(height: 24),
             ],
           ),
@@ -195,7 +269,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         // Always show if has route data, but behavior changes based on WebSocket status
         if (hasRouteData)
           Positioned(
-            bottom: (canStartDelivery || canConfirmPreDelivery) ? 100 : 16,
+            bottom: (canStartDelivery || canConfirmPreDelivery || canConfirmDelivery || canUploadFinalOdometer) ? 100 : 16,
             right: 16,
             child: Builder(
               builder: (context) {
@@ -207,14 +281,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   onPressed: () {
                     if (isConnected) {
                       // Return to navigation screen (already has active connection)
-                      // Just navigate back, the screen will detect existing connection
+                      // Pop current screen first, then navigate to navigation
+                      debugPrint('🚀 Navigating to NavigationScreen:');
+                      debugPrint('   - Order ID: ${orderWithDetails.id}');
+                      debugPrint('   - isSimulationMode from GlobalLocationManager: ${_globalLocationManager.isSimulationMode}');
+                      
+                      Navigator.of(context).pop(); // Pop OrderDetailScreen
+                      
                       Navigator.pushNamed(
                         context,
                         AppRoutes.navigation,
                         arguments: {
                           'orderId': orderWithDetails.id,
-                          'isSimulationMode':
-                              false, // Will be ignored if already connected
+                          'isSimulationMode': _globalLocationManager.isSimulationMode,
                         },
                       );
                     } else {
@@ -245,7 +324,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
 
         // Action Buttons Row (white background)
-        if (canStartDelivery || canConfirmPreDelivery)
+        if (canStartDelivery || canConfirmPreDelivery || canConfirmDelivery || canUploadFinalOdometer)
           Positioned(
             bottom: 0,
             left: 0,
@@ -264,20 +343,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   top: BorderSide(color: AppColors.border, width: 1),
                 ),
               ),
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 12,
+                bottom: 12 + MediaQuery.of(context).padding.bottom,
+              ),
               child: canStartDelivery
                   ? StartDeliverySection(order: orderWithDetails)
-                  : ElevatedButton(
+                  : canUploadFinalOdometer
+                      ? FinalOdometerSection(order: orderWithDetails)
+                      : canConfirmDelivery
+                          ? DeliveryConfirmationSection(order: orderWithDetails)
+                          : ElevatedButton(
                       onPressed: () async {
                         // Kiểm tra driver role trước khi cho phép thực hiện action
                         if (!DriverRoleChecker.canPerformActions(orderWithDetails, _authViewModel)) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(DriverRoleChecker.getSecondaryDriverActionMessage()),
-                              backgroundColor: Colors.orange,
-                              duration: const Duration(seconds: 4),
-                            ),
-                          );
+                          // Không hiển thị thông báo, chỉ return để thân thiện với user
                           return;
                         }
 
@@ -292,12 +374,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           _loadOrderDetails();
 
                           // If tracking is active, navigate back to continue
-                          if (_globalLocationManager.isGlobalTrackingActive) {
+                          if (_globalLocationManager.isGlobalTrackingActive &&
+                              _globalLocationManager.currentOrderId == orderWithDetails.id) {
+                            // Pop current screen and navigate to navigation screen
+                            Navigator.of(context).pop(); // Pop OrderDetailScreen
+                            
                             Navigator.of(context).pushNamed(
                               AppRoutes.navigation,
                               arguments: {
                                 'orderId': orderWithDetails.id,
-                                'isSimulationMode': true,
+                                'isSimulationMode': _globalLocationManager.isSimulationMode,
                               },
                             );
                           }

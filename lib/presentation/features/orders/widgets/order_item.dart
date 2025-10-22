@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../domain/entities/order.dart';
+import '../../../../domain/entities/order_status.dart';
 
 class OrderItem extends StatelessWidget {
   final Order order;
@@ -74,39 +75,9 @@ class OrderItem extends StatelessWidget {
   }
 
   Widget _buildStatusBadge(String status) {
-    Color color;
-    String displayStatus;
-
-    switch (status) {
-      case 'ASSIGNED_TO_DRIVER':
-        color = Colors.blue;
-        displayStatus = 'Đã giao cho tài xế';
-        break;
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
-        color = Colors.orange;
-        displayStatus = 'Đang lấy hàng';
-        break;
-      case 'PICKED_UP':
-        color = Colors.orange;
-        displayStatus = 'Đã lấy hàng';
-        break;
-      case 'DELIVERING':
-        color = Colors.purple;
-        displayStatus = 'Đang giao';
-        break;
-      case 'DELIVERED':
-        color = Colors.green;
-        displayStatus = 'Đã giao';
-        break;
-      case 'CANCELLED':
-        color = Colors.red;
-        displayStatus = 'Đã hủy';
-        break;
-      default:
-        color = Colors.grey;
-        displayStatus = status;
-    }
+    final orderStatus = OrderStatus.fromString(status);
+    final displayStatus = orderStatus.toVietnamese();
+    final color = _getStatusColor(orderStatus);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -124,5 +95,39 @@ class OrderItem extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+      case OrderStatus.processing:
+        return Colors.grey;
+      case OrderStatus.contractDraft:
+      case OrderStatus.contractSigned:
+      case OrderStatus.onPlanning:
+        return Colors.blue;
+      case OrderStatus.assignedToDriver:
+      case OrderStatus.fullyPaid:
+        return Colors.blue;
+      case OrderStatus.pickingUp:
+        return Colors.orange;
+      case OrderStatus.onDelivered:
+      case OrderStatus.ongoingDelivered:
+        return Colors.purple;
+      case OrderStatus.delivered:
+      case OrderStatus.successful:
+        return Colors.green;
+      case OrderStatus.inTroubles:
+        return Colors.red;
+      case OrderStatus.resolved:
+      case OrderStatus.compensation:
+        return Colors.orange;
+      case OrderStatus.rejectOrder:
+        return Colors.red;
+      case OrderStatus.returning:
+        return Colors.orange;
+      case OrderStatus.returned:
+        return Colors.grey;
+    }
   }
 }

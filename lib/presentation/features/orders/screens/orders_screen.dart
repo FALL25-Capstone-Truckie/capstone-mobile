@@ -7,6 +7,7 @@ import '../../../../core/services/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
 import '../../../../core/utils/responsive_extensions.dart';
 import '../../../../domain/entities/order.dart';
+import '../../../../domain/entities/order_status.dart';
 import '../../../../presentation/common_widgets/responsive_grid.dart';
 import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/common_widgets/skeleton_loader.dart';
@@ -303,9 +304,19 @@ class _OrdersScreenState extends State<OrdersScreen>
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
       child: InkWell(
-        onTap: () {
-          // Navigate to order details screen
-          Navigator.pushNamed(context, AppRoutes.orderDetail, arguments: order.id);
+        onTap: () async {
+          // Navigate to order details screen and reload when back
+          final result = await Navigator.pushNamed(
+            context,
+            AppRoutes.orderDetail,
+            arguments: order.id,
+          );
+          
+          // Reload orders after returning from detail screen
+          if (mounted && result == true) {
+            debugPrint('🔄 Reloading orders after returning from detail screen');
+            _loadOrders();
+          }
         },
         borderRadius: BorderRadius.circular(12.r),
         child: Padding(
@@ -392,43 +403,43 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED_TO_DRIVER':
+    final orderStatus = OrderStatus.fromString(status);
+    switch (orderStatus) {
+      case OrderStatus.pending:
+      case OrderStatus.processing:
+        return Colors.grey;
+      case OrderStatus.contractDraft:
+      case OrderStatus.contractSigned:
+      case OrderStatus.onPlanning:
+        return Colors.blue;
+      case OrderStatus.assignedToDriver:
+      case OrderStatus.fullyPaid:
         return AppColors.warning;
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
+      case OrderStatus.pickingUp:
         return Colors.orange;
-      case 'IN_PROGRESS':
-      case 'DELIVERING':
+      case OrderStatus.onDelivered:
+      case OrderStatus.ongoingDelivered:
         return AppColors.inProgress;
-      case 'COMPLETED':
-      case 'DELIVERED':
+      case OrderStatus.delivered:
+      case OrderStatus.successful:
         return AppColors.success;
-      case 'CANCELLED':
+      case OrderStatus.inTroubles:
         return AppColors.error;
-      default:
-        return AppColors.textSecondary;
+      case OrderStatus.resolved:
+      case OrderStatus.compensation:
+        return Colors.orange;
+      case OrderStatus.rejectOrder:
+        return AppColors.error;
+      case OrderStatus.returning:
+        return Colors.orange;
+      case OrderStatus.returned:
+        return Colors.grey;
     }
   }
 
   String _getStatusText(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED_TO_DRIVER':
-        return 'Chờ lấy hàng';
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
-        return 'Đang lấy hàng';
-      case 'IN_PROGRESS':
-      case 'DELIVERING':
-        return 'Đang giao';
-      case 'COMPLETED':
-      case 'DELIVERED':
-        return 'Hoàn thành';
-      case 'CANCELLED':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
+    final orderStatus = OrderStatus.fromString(status);
+    return orderStatus.toVietnamese();
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../../app/app_routes.dart';
 import '../../../../core/services/global_location_manager.dart';
+import '../../../../core/services/navigation_state_service.dart';
 import '../../../../core/services/service_locator.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
@@ -53,6 +54,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
   // Custom marker for current location
   Symbol? _currentLocationMarker;
 
+  // Throttle _drawRoutes to prevent buffer overflow
+  DateTime? _lastDrawRoutesTime;
+  static const _drawRoutesThrottleDuration = Duration(milliseconds: 500);
+
   @override
   void initState() {
     super.initState();
@@ -77,13 +82,15 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     _loadMapStyle();
 
-    // Only load order details if we don't have route data yet
-    if (_viewModel.routeSegments.isEmpty) {
-      debugPrint('   - Loading order details...');
-      _loadOrderDetails();
-    } else {
-      debugPrint('✅ Route data already loaded, skipping reload');
-    }
+    // Load order details to ensure we have latest vehicle assignment info
+    // This is important for determining isPrimaryDriver status
+    debugPrint('   - Loading order details...');
+    _loadOrderDetails().then((_) {
+      // After loading, check if we need to auto-resume
+      if (_viewModel.routeSegments.isNotEmpty) {
+        _checkAndResumeAfterAction();
+      }
+    });
 
     // Check if viewModel is already simulating (returning to active simulation)
     // Only set _isSimulating if viewModel confirms it's running
@@ -94,9 +101,79 @@ class _NavigationScreenState extends State<NavigationScreen> {
       debugPrint('   - ViewModel not simulating, _isSimulating = false');
     }
   }
+  
+  // Check if we need to resume simulation after action confirmation
+  void _checkAndResumeAfterAction() {
+    debugPrint('🔍 Checking if need to resume after action...');
+    debugPrint('   - _isSimulating: $_isSimulating');
+    debugPrint('   - _isPaused: $_isPaused');
+    debugPrint('   - ViewModel.isSimulating: ${_viewModel.isSimulating}');
+    debugPrint('   - isSimulationMode: ${widget.isSimulationMode}');
+    debugPrint('   - currentSegmentIndex: ${_viewModel.currentSegmentIndex}');
+    debugPrint('   - currentLocation: ${_viewModel.currentLocation}');
+    
+    // Sync state from viewModel
+    if (_viewModel.isSimulating && !_isSimulating) {
+      debugPrint('⚠️ State mismatch: ViewModel is simulating but screen state is not');
+      _isSimulating = true;
+      _isPaused = true; // Assume paused if we just returned
+    }
+    
+    // If in simulation mode and paused (likely after action confirmation), auto-resume
+    if (widget.isSimulationMode && _isSimulating && _isPaused) {
+      debugPrint('✅ Auto-resuming simulation after action confirmation');
+      
+      // Check if we're at the end of a segment (just completed an action)
+      final currentSegment = _viewModel.routeSegments.isNotEmpty && 
+                            _viewModel.currentSegmentIndex < _viewModel.routeSegments.length
+          ? _viewModel.routeSegments[_viewModel.currentSegmentIndex]
+          : null;
+      
+      if (currentSegment != null && 
+          _viewModel.currentLocation != null &&
+          currentSegment.points.isNotEmpty) {
+        final lastPoint = currentSegment.points.last;
+        final isAtEndOfSegment = _viewModel.currentLocation == lastPoint;
+        
+        if (isAtEndOfSegment) {
+          debugPrint('📍 At end of segment, moving to next segment before resume');
+          _viewModel.moveToNextSegmentManually();
+        }
+      }
+      
+      // Delay to ensure UI is ready and map is loaded
+      Future.delayed(const Duration(milliseconds: 1000), () async {
+        if (mounted && _isPaused) {
+          // Focus camera first
+          if (_viewModel.currentLocation != null && _mapController != null) {
+            debugPrint('📍 Pre-focusing camera before resume');
+            await _setCameraToNavigationMode(_viewModel.currentLocation!);
+            await Future.delayed(const Duration(milliseconds: 300));
+          }
+          
+          // Then resume
+          _resumeSimulation();
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
+    // Clean up map resources to prevent buffer overflow
+    try {
+      if (_mapController != null) {
+        _mapController!.clearPolylines();
+        _mapController!.clearCircles();
+        if (_currentLocationMarker != null) {
+          _mapController!.removeSymbol(_currentLocationMarker!);
+          _currentLocationMarker = null;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error cleaning up map resources: $e');
+    }
+
     // Unregister this screen from GlobalLocationManager
     _globalLocationManager.unregisterScreen('NavigationScreen');
 
@@ -337,13 +414,26 @@ class _NavigationScreenState extends State<NavigationScreen> {
             );
           }
 
+          // Check if we should auto-restore simulation from saved state
+          final stateService = getIt<NavigationStateService>();
+          final savedState = stateService.getSavedNavigationState();
+          final shouldAutoRestore = savedState != null && 
+                                   savedState.orderId == widget.orderId &&
+                                   savedState.isSimulationMode &&
+                                   widget.isSimulationMode;
+
           // Start real tracking or simulation based on mode
           // Priority: Check simulation mode first
           if (widget.isSimulationMode && !_isSimulating) {
-            debugPrint('🎬 Starting simulation mode (after loading order)');
-            // DON'T stop tracking - keep WebSocket alive for simulation
-            // Simulation will use the same WebSocket connection
-            _showSimulationDialog();
+            if (shouldAutoRestore) {
+              debugPrint('🔄 Auto-restoring simulation from saved state');
+              // Auto-start simulation WITH restore
+              _startSimulation(shouldRestore: true);
+            } else {
+              debugPrint('🎬 Starting simulation mode (after loading order)');
+              // Show dialog for new simulation
+              _showSimulationDialog();
+            }
           } else if (!widget.isSimulationMode &&
               !_globalLocationManager.isGlobalTrackingActive) {
             _startRealTimeNavigation();
@@ -392,37 +482,53 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _setCameraToNavigationMode(_viewModel.routeSegments[0].points.first);
       }
 
+      // Check if we should auto-restore simulation from saved state
+      final stateService = getIt<NavigationStateService>();
+      final savedState = stateService.getSavedNavigationState();
+      final shouldAutoRestore = savedState != null && 
+                               savedState.orderId == widget.orderId &&
+                               savedState.isSimulationMode &&
+                               widget.isSimulationMode;
+
       // Start real tracking or simulation based on mode
       // Priority: Check simulation mode first, then check existing connections
       debugPrint('🔍 Checking navigation mode:');
       debugPrint('   - widget.isSimulationMode: ${widget.isSimulationMode}');
       debugPrint('   - _isSimulating: $_isSimulating');
       debugPrint('   - _isPaused: $_isPaused');
+      debugPrint('   - shouldAutoRestore: $shouldAutoRestore');
       debugPrint(
         '   - Global tracking active: ${_globalLocationManager.isGlobalTrackingActive}',
       );
 
       if (widget.isSimulationMode && !_isSimulating) {
-        debugPrint(
-          '🎬 Starting simulation mode (isSimulationMode=true, _isSimulating=false)',
-        );
-        // DON'T stop tracking - keep WebSocket alive for simulation
-        // Simulation will use the same WebSocket connection
-        _showSimulationDialog();
+        if (shouldAutoRestore) {
+          debugPrint('🔄 Auto-restoring simulation from saved state');
+          // Auto-start simulation WITH restore
+          _startSimulation(shouldRestore: true);
+        } else {
+          debugPrint(
+            '🎬 Starting simulation mode (isSimulationMode=true, _isSimulating=false)',
+          );
+          // Show dialog for new simulation
+          _showSimulationDialog();
+        }
       } else if (!widget.isSimulationMode &&
           !_globalLocationManager.isGlobalTrackingActive) {
         debugPrint('🚗 Starting real-time navigation');
         _startRealTimeNavigation();
       } else if (_isSimulating && _isPaused) {
-        debugPrint('⏸️ Simulation paused, showing resume dialog');
-        // Simulation is paused (returned from order detail), show dialog to continue
-        _showResumeSimulationDialog();
+        debugPrint('⏸️ Simulation paused, auto-resuming...');
+        // Auto-resume simulation after action (no dialog needed)
+        _resumeSimulation();
       } else if (_isSimulating) {
         debugPrint('▶️ Resuming existing simulation');
         // Resume existing simulation
         _resumeSimulation();
       } else if (_globalLocationManager.isGlobalTrackingActive) {
         debugPrint('🔗 Integrated tracking already active, continuing...');
+        debugPrint('   - This should only happen for real GPS tracking, not simulation');
+        debugPrint('   - If you see this during simulation restore, there is a bug');
         // WebSocket is connected, just update camera
         if (_viewModel.currentLocation != null) {
           _setCameraToNavigationMode(_viewModel.currentLocation!);
@@ -716,10 +822,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void _drawRoutes() {
     if (_mapController == null || _viewModel.routeSegments.isEmpty) return;
 
-    // Clear existing routes
-    _mapController!.clearPolylines();
-    _mapController!.clearCircles();
-    _mapController!.clearSymbols();
+    // Throttle to prevent excessive redrawing and buffer overflow
+    final now = DateTime.now();
+    if (_lastDrawRoutesTime != null &&
+        now.difference(_lastDrawRoutesTime!) < _drawRoutesThrottleDuration) {
+      debugPrint('⏱️ Throttling _drawRoutes call');
+      return;
+    }
+    _lastDrawRoutesTime = now;
+
+    // Clear existing routes - use try-catch to handle any cleanup errors
+    try {
+      _mapController!.clearPolylines();
+      _mapController!.clearCircles();
+      // Don't clear symbols here - we manage the location marker separately
+    } catch (e) {
+      debugPrint('⚠️ Error clearing map elements: $e');
+    }
 
     // Danh sách tất cả các điểm để tính toán bounds
     List<LatLng> allPoints = [];
@@ -764,51 +883,37 @@ class _NavigationScreenState extends State<NavigationScreen> {
         ),
       );
 
-      // Draw circles for start and end points of each segment
+      // Only draw waypoint markers (start/end), not intermediate circles
+      // This significantly reduces the number of map elements
       if (optimizedPoints.isNotEmpty) {
-        // Start point
-        _mapController!.addCircle(
-          CircleOptions(
-            geometry: optimizedPoints.first,
-            circleRadius: isCurrentSegment ? 6.0 : 5.0,
-            circleColor: color,
-            circleStrokeWidth: 1.0,
-            circleStrokeColor: Colors.white,
-            circleOpacity: isCurrentSegment ? 1.0 : 0.7,
-          ),
-        );
+        // Start point - only for first segment
+        if (i == 0) {
+          _mapController!.addCircle(
+            CircleOptions(
+              geometry: optimizedPoints.first,
+              circleRadius: 8.0,
+              circleColor: color,
+              circleStrokeWidth: 2.0,
+              circleStrokeColor: Colors.white,
+              circleOpacity: 1.0,
+            ),
+          );
+        }
 
-        // End point
+        // End point - for all segments
         _mapController!.addCircle(
           CircleOptions(
             geometry: optimizedPoints.last,
-            circleRadius: isCurrentSegment ? 6.0 : 5.0,
+            circleRadius: 8.0,
             circleColor: color,
-            circleStrokeWidth: 1.0,
+            circleStrokeWidth: 2.0,
             circleStrokeColor: Colors.white,
-            circleOpacity: isCurrentSegment ? 1.0 : 0.7,
+            circleOpacity: 1.0,
           ),
         );
 
-        // Intermediate points (smaller circles) - chỉ vẽ cho đoạn đường hiện tại
-        if (isCurrentSegment) {
-          // Chỉ vẽ một số điểm trung gian để tránh quá nhiều điểm
-          int step = (optimizedPoints.length / 10).ceil();
-          step = step < 1 ? 1 : step;
-
-          for (int j = step; j < optimizedPoints.length - step; j += step) {
-            _mapController!.addCircle(
-              CircleOptions(
-                geometry: optimizedPoints[j],
-                circleRadius: 4.0,
-                circleColor: color,
-                circleStrokeWidth: 1.0,
-                circleStrokeColor: Colors.white,
-                circleOpacity: 0.7,
-              ),
-            );
-          }
-        }
+        // Remove intermediate circles completely to avoid buffer overflow
+        // The polyline is sufficient to show the route
       }
     }
 
@@ -891,35 +996,44 @@ class _NavigationScreenState extends State<NavigationScreen> {
     if (_mapController == null) return;
 
     try {
-      // Remove old marker if exists
+      // Update existing marker instead of remove/add to avoid buffer issues
       if (_currentLocationMarker != null) {
-        await _mapController!.removeSymbol(_currentLocationMarker!);
+        await _mapController!.updateSymbol(
+          _currentLocationMarker!,
+          SymbolOptions(
+            geometry: location,
+            textRotate: bearing ?? 0.0,
+          ),
+        );
+      } else {
+        // Create marker for the first time
+        _currentLocationMarker = await _mapController!.addSymbol(
+          SymbolOptions(
+            geometry: location,
+            textField: '🚛', // Truck emoji
+            textSize: 32.0,
+            textRotate: bearing ?? 0.0,
+          ),
+        );
       }
-
-      // Add new custom marker - use emoji truck icon with rotation
-      _currentLocationMarker = await _mapController!.addSymbol(
-        SymbolOptions(
-          geometry: location,
-          textField: '🚛', // Truck emoji
-          textSize: 32.0,
-          textRotate: bearing ?? 0.0, // Rotate with bearing
-        ),
-      );
     } catch (e) {
       debugPrint('❌ Error updating location marker: $e');
-      // Fallback: Use bright blue circle with white border
+      // If update fails, try to recreate
       try {
-        await _mapController!.addCircle(
-          CircleOptions(
+        if (_currentLocationMarker != null) {
+          await _mapController!.removeSymbol(_currentLocationMarker!);
+          _currentLocationMarker = null;
+        }
+        _currentLocationMarker = await _mapController!.addSymbol(
+          SymbolOptions(
             geometry: location,
-            circleRadius: 12.0,
-            circleColor: Colors.blue,
-            circleStrokeWidth: 4.0,
-            circleStrokeColor: Colors.white,
+            textField: '🚛',
+            textSize: 32.0,
+            textRotate: bearing ?? 0.0,
           ),
         );
       } catch (e2) {
-        debugPrint('❌ Error adding fallback circle: $e2');
+        debugPrint('❌ Error recreating marker: $e2');
       }
     }
   }
@@ -986,7 +1100,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
   }
 
-  Future<void> _startSimulation() async {
+  Future<void> _startSimulation({bool shouldRestore = false}) async {
     if (_isSimulating) {
       debugPrint('⚠️ Simulation already running');
       return;
@@ -994,6 +1108,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     debugPrint('🎬 Starting simulation...');
     debugPrint('   - isSimulationMode: ${widget.isSimulationMode}');
+    debugPrint('   - shouldRestore: $shouldRestore');
     debugPrint('   - Route segments: ${_viewModel.routeSegments.length}');
 
     // Validate route data
@@ -1012,6 +1127,22 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     // Reset any existing simulation in viewModel
     _viewModel.pauseSimulation();
+    
+    // If NOT restoring (manual start), clear old saved state to start fresh
+    if (!shouldRestore) {
+      final stateService = getIt<NavigationStateService>();
+      stateService.clearNavigationState();
+      debugPrint('🗑️ Cleared old saved state (manual start from beginning)');
+    }
+
+    // CRITICAL: Update simulation mode in GlobalLocationManager
+    // This ensures saved state has correct simulation mode
+    debugPrint('🔄 Updating GlobalLocationManager simulation mode to TRUE');
+    _globalLocationManager.updateSimulationMode(true);
+    
+    // Save updated state with simulation mode
+    await _globalLocationManager.saveNavigationState();
+    debugPrint('✅ Saved state updated with simulation mode: true');
 
     // Connect to WebSocket first (with simulation mode enabled)
     final connected = await _startLocationTracking();
@@ -1039,11 +1170,40 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     debugPrint('▶️ Starting actual simulation...');
     // Start the simulation
-    _startActualSimulation();
+    _startActualSimulation(shouldRestore: shouldRestore);
   }
 
-  void _startActualSimulation() {
+  void _startActualSimulation({required bool shouldRestore}) {
     debugPrint('🚀 _startActualSimulation called');
+    debugPrint('   - shouldRestore: $shouldRestore');
+
+    // Only restore saved position if shouldRestore is true
+    if (shouldRestore) {
+      final stateService = getIt<NavigationStateService>();
+      final savedState = stateService.getSavedNavigationState();
+      
+      if (savedState != null && 
+          savedState.orderId == widget.orderId && 
+          savedState.hasPosition) {
+        debugPrint('📍 Restoring saved simulation position:');
+        debugPrint('   - Lat: ${savedState.currentLatitude}');
+        debugPrint('   - Lng: ${savedState.currentLongitude}');
+        debugPrint('   - Segment: ${savedState.currentSegmentIndex}');
+        
+        // Restore position in viewModel
+        if (savedState.currentSegmentIndex != null) {
+          _viewModel.restoreSimulationPosition(
+            segmentIndex: savedState.currentSegmentIndex!,
+            latitude: savedState.currentLatitude!,
+            longitude: savedState.currentLongitude!,
+          );
+        }
+      } else {
+        debugPrint('ℹ️ No saved position found to restore');
+      }
+    } else {
+      debugPrint('ℹ️ Manual start - NOT restoring saved position, starting from beginning');
+    }
 
     // Ensure we're following the vehicle
     setState(() {
@@ -1065,12 +1225,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
           _setCameraToNavigationMode(location);
         }
 
-        // Send location update via GlobalLocationManager with speed
+        // Send location update via GlobalLocationManager with speed and segment
         _globalLocationManager.sendLocationUpdate(
           location.latitude,
           location.longitude,
           bearing: bearing,
           speed: _viewModel.currentSpeed, // Add current speed
+          segmentIndex: _viewModel.currentSegmentIndex, // Add segment for position restore
         );
 
         // Rebuild UI to update speed display
@@ -1174,16 +1335,32 @@ class _NavigationScreenState extends State<NavigationScreen> {
       _isFollowingUser = true;
     });
 
-    debugPrint('✅ State updated: _isPaused=false');
+    debugPrint('✅ State updated: _isPaused=false, _isFollowingUser=true');
 
     _viewModel.resumeSimulation();
 
     debugPrint('✅ ViewModel.resumeSimulation() called');
 
-    // Refocus camera on current position
-    if (_viewModel.currentLocation != null) {
-      _setCameraToNavigationMode(_viewModel.currentLocation!);
-      debugPrint('✅ Camera refocused');
+    // Wait a bit for map to be ready, then refocus camera
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Refocus camera on current position with retry
+    if (_viewModel.currentLocation != null && mounted) {
+      debugPrint('📍 Refocusing camera to: ${_viewModel.currentLocation}');
+      
+      // Try multiple times to ensure camera focuses
+      for (int i = 0; i < 3; i++) {
+        if (!mounted) break;
+        
+        await _setCameraToNavigationMode(_viewModel.currentLocation!);
+        debugPrint('   - Camera focus attempt ${i + 1}/3');
+        
+        if (i < 2) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+      }
+      
+      debugPrint('✅ Camera refocused successfully');
     }
 
     // Rebuild UI to show updated speed
@@ -1197,13 +1374,29 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void _resetSimulation() {
     debugPrint('🔄 Resetting simulation...');
 
+    // Reset UI state
     setState(() {
       _isSimulating = false;
       _isPaused = false;
     });
 
+    // Reset viewModel (cancels timer, clears route data)
     _viewModel.resetNavigation();
 
+    // Clear all polylines and symbols (including current position marker)
+    _mapController?.clearLines();
+    _mapController?.clearSymbols();
+
+    // CRITICAL: Clear saved navigation state to start fresh
+    final stateService = getIt<NavigationStateService>();
+    stateService.clearNavigationState();
+    debugPrint('🗑️ Cleared saved navigation state');
+
+    // Update simulation mode to false in GlobalLocationManager
+    debugPrint('🔄 Updating GlobalLocationManager simulation mode to FALSE');
+    _globalLocationManager.updateSimulationMode(false);
+
+    // Re-parse route and redraw
     if (_viewModel.orderWithDetails != null) {
       _viewModel.parseRouteFromOrder(_viewModel.orderWithDetails!);
       _drawRoutes();
@@ -1226,6 +1419,55 @@ class _NavigationScreenState extends State<NavigationScreen> {
         );
       }
     }
+
+    debugPrint('✅ Simulation reset complete');
+  }
+
+  void _jumpToNextSegment() async {
+    debugPrint('⏩ Jump to next segment button pressed');
+    debugPrint('   - _isSimulating: $_isSimulating');
+    debugPrint('   - _isPaused: $_isPaused');
+    
+    // CRITICAL: Ensure simulation is running
+    // If paused, resume it so next tick can detect completion
+    if (_isSimulating && _isPaused) {
+      debugPrint('⚠️ Simulation is paused, resuming before jump...');
+      _resumeSimulation();
+      // Wait a bit for simulation to start
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    // Jump to next segment in viewModel (await for status updates)
+    await _viewModel.jumpToNextSegment();
+    
+    // Update camera to new location
+    if (_viewModel.currentLocation != null) {
+      _updateLocationMarker(
+        _viewModel.currentLocation!,
+        _viewModel.currentBearing,
+      );
+      
+      if (_isFollowingUser) {
+        _setCameraToNavigationMode(_viewModel.currentLocation!);
+      }
+      
+      // Send location update to server
+      _globalLocationManager.sendLocationUpdate(
+        _viewModel.currentLocation!.latitude,
+        _viewModel.currentLocation!.longitude,
+        bearing: _viewModel.currentBearing,
+        speed: _viewModel.currentSpeed,
+      );
+    }
+    
+    // Redraw routes to update current segment
+    _drawRoutes();
+    
+    debugPrint('✅ Jump complete, waiting for next tick to detect completion...');
+    // Note: We don't manually trigger completion here.
+    // The next simulation tick (or GPS check) will detect that we're at
+    // the end of the segment and trigger onSegmentComplete naturally.
+    // This ensures consistent behavior between simulation, GPS, and skip.
   }
 
   Widget _buildSpeedButton(String label, double speed) {
@@ -1314,17 +1556,45 @@ class _NavigationScreenState extends State<NavigationScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Đã đến điểm giao hàng'),
         content: const Text(
-          'Bạn đã đến điểm giao hàng. Vui lòng giao hàng và xác nhận.',
+          'Bạn đã đến điểm giao hàng. Vui lòng chụp ảnh xác nhận giao hàng.',
         ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              // Navigate to order detail screen
+              // Navigate to order detail screen to upload photo completion
               Navigator.of(
                 context,
               ).pushNamed(AppRoutes.orderDetail, arguments: widget.orderId);
             },
+            child: const Text('Chụp ảnh xác nhận'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showCompleteTripConfirmation() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận hoàn thành'),
+        content: const Text(
+          'Bạn có chắc chắn đã giao hàng thành công?\n\n'
+          'Sau khi xác nhận, chuyến xe sẽ được đánh dấu là hoàn thành.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Xác nhận'),
           ),
         ],
@@ -1333,31 +1603,35 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   void _showCompletionMessage() {
-    // Mark trip as complete and stop WebSocket tracking
-    setState(() {
-      _isTripComplete = true;
-    });
-    _stopLocationTracking();
-
+    // Pause simulation but don't mark as complete yet
+    // Driver needs to upload odometer end reading first
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Hoàn thành chuyến xe'),
-        content: const Text('Bạn đã hoàn thành chuyến xe thành công!'),
+        title: const Text('Đã về đến kho'),
+        content: const Text(
+          'Bạn đã về đến kho. Vui lòng chụp ảnh đồng hồ công tơ mét cuối để hoàn thành chuyến xe.',
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              // Pop back to order detail screen
-              Navigator.of(context).pop();
+              
+              // Navigate to order detail to upload odometer
+              // Backend will update order status to SUCCESSFUL after upload
+              Navigator.of(context).pushNamed(
+                AppRoutes.orderDetail,
+                arguments: widget.orderId,
+              );
             },
-            child: const Text('Xác nhận'),
+            child: const Text('Chụp ảnh đồng hồ'),
           ),
         ],
       ),
     );
   }
+
 
   void _toggle3DMode() {
     setState(() {
@@ -1369,7 +1643,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     }
   }
 
-  void _setCameraToNavigationMode(LatLng position) {
+  Future<void> _setCameraToNavigationMode(LatLng position) async {
     if (_mapController == null) return;
 
     // Giảm tốc độ chuyển camera để tránh tải quá nhiều tile
@@ -1377,7 +1651,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
     if (_is3DMode) {
       // Chế độ 3D: tilt cao (45 độ), zoom gần hơn và bearing theo hướng di chuyển
-      _mapController!.animateCamera(
+      await _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: position,
@@ -1390,7 +1664,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       );
     } else {
       // Chế độ 2D: không có tilt, zoom xa hơn một chút
-      _mapController!.animateCamera(
+      await _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(target: position, zoom: 15.0, bearing: 0.0, tilt: 0.0),
         ),
@@ -1728,58 +2002,100 @@ class _NavigationScreenState extends State<NavigationScreen> {
                       ],
                     ),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        ElevatedButton(
-                          onPressed: !_isSimulating
-                              ? _startSimulation
-                              : (_isPaused
-                                    ? _resumeSimulation
-                                    : _pauseSimulation),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: !_isSimulating
+                                ? _startSimulation
+                                : (_isPaused
+                                      ? _resumeSimulation
+                                      : _pauseSimulation),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 12,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                !_isSimulating
-                                    ? Icons.play_arrow
-                                    : (_isPaused
-                                          ? Icons.play_arrow
-                                          : Icons.pause),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                !_isSimulating
-                                    ? 'Bắt đầu'
-                                    : (_isPaused ? 'Tiếp tục' : 'Tạm dừng'),
-                              ),
-                            ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  !_isSimulating
+                                      ? Icons.play_arrow
+                                      : (_isPaused
+                                            ? Icons.play_arrow
+                                            : Icons.pause),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    !_isSimulating
+                                        ? 'Bắt đầu'
+                                        : (_isPaused ? 'Tiếp tục' : 'Tạm dừng'),
+                                    style: const TextStyle(fontSize: 13),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        ElevatedButton(
-                          onPressed: _resetSimulation,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
+                        if (_isSimulating) ...[
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _jumpToNextSegment,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.skip_next, size: 20),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Skip',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.refresh),
-                              SizedBox(width: 8),
-                              Text('Đặt lại'),
-                            ],
+                        ],
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _resetSimulation,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.refresh, size: 20),
+                                SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    'Đặt lại',
+                                    style: TextStyle(fontSize: 13),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

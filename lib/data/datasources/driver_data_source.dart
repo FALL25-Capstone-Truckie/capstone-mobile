@@ -1,5 +1,6 @@
+import 'package:dio/dio.dart';
 import '../../core/errors/exceptions.dart';
-import '../../core/services/api_service.dart';
+import 'api_client.dart';
 import '../../domain/entities/driver.dart';
 
 abstract class DriverDataSource {
@@ -20,22 +21,22 @@ abstract class DriverDataSource {
 }
 
 class DriverDataSourceImpl implements DriverDataSource {
-  final ApiService apiService;
+  final ApiClient _apiClient;
 
-  DriverDataSourceImpl({required this.apiService});
+  DriverDataSourceImpl({required ApiClient apiClient}) : _apiClient = apiClient;
 
   @override
   Future<Driver> getDriverInfo() async {
     try {
       // Using the new API endpoint that doesn't require userId parameter
-      final response = await apiService.get('/drivers/user');
+      final response = await _apiClient.dio.get('/drivers/user');
 
-      if (response['success'] == true && response['data'] != null) {
-        return Driver.fromJson(response['data']);
+      if (response.data['success'] == true && response.data['data'] != null) {
+        return Driver.fromJson(response.data['data']);
       } else {
         throw ServerException(
-          message: response['message'] ?? 'Không thể lấy thông tin tài xế',
-          statusCode: response['statusCode'] ?? 500,
+          message: response.data['message'] ?? 'Không thể lấy thông tin tài xế',
+          statusCode: response.statusCode ?? 500,
         );
       }
     } catch (e) {
@@ -50,14 +51,14 @@ class DriverDataSourceImpl implements DriverDataSource {
   Future<Driver> getDriverByUserId(String userId) async {
     try {
       // Using the new API endpoint that doesn't require userId parameter
-      final response = await apiService.get('/drivers/user');
+      final response = await _apiClient.dio.get('/drivers/user');
 
-      if (response['success'] == true && response['data'] != null) {
-        return Driver.fromJson(response['data']);
+      if (response.data['success'] == true && response.data['data'] != null) {
+        return Driver.fromJson(response.data['data']);
       } else {
         throw ServerException(
-          message: response['message'] ?? 'Không thể lấy thông tin tài xế',
-          statusCode: response['statusCode'] ?? 500,
+          message: response.data['message'] ?? 'Không thể lấy thông tin tài xế',
+          statusCode: response.statusCode ?? 500,
         );
       }
     } catch (e) {
@@ -74,14 +75,14 @@ class DriverDataSourceImpl implements DriverDataSource {
     Map<String, dynamic> driverInfo,
   ) async {
     try {
-      final response = await apiService.put('/drivers/$driverId', driverInfo);
+      final response = await _apiClient.dio.put('/drivers/$driverId', data: driverInfo);
 
-      if (response['success'] == true && response['data'] != null) {
-        return Driver.fromJson(response['data']);
+      if (response.data['success'] == true && response.data['data'] != null) {
+        return Driver.fromJson(response.data['data']);
       } else {
         throw ServerException(
-          message: response['message'] ?? 'Không thể cập nhật thông tin tài xế',
-          statusCode: response['statusCode'] ?? 500,
+          message: response.data['message'] ?? 'Không thể cập nhật thông tin tài xế',
+          statusCode: response.statusCode ?? 500,
         );
       }
     } catch (e) {

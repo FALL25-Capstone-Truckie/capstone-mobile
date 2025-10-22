@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../../core/services/service_locator.dart';
+import '../../../../../domain/entities/order_detail.dart';
 import '../../../../../domain/entities/order_with_details.dart';
 import '../../../../../presentation/theme/app_colors.dart';
 import '../../viewmodels/pre_delivery_documentation_viewmodel.dart';
@@ -33,6 +34,17 @@ class _PreDeliveryDocumentationSectionState
   void initState() {
     super.initState();
     _viewModel = getIt<PreDeliveryDocumentationViewModel>();
+  }
+
+  List<OrderSeal> _getAvailableSeals() {
+    if (widget.order.orderDetails.isEmpty) {
+      return [];
+    }
+    final orderDetail = widget.order.orderDetails.first;
+    if (orderDetail.vehicleAssignment == null) {
+      return [];
+    }
+    return orderDetail.vehicleAssignment!.orderSeals;
   }
 
   Future<void> _pickPackingProofImage(ImageSource source) async {
@@ -128,14 +140,14 @@ class _PreDeliveryDocumentationSectionState
         return;
       }
 
-      final result = await _viewModel.submitPreDeliveryDocumentation(
+      final result = await _viewModel.submitDocumentation(
         vehicleAssignmentId: vehicleAssignmentId,
       );
 
       if (result && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Xác nhận hàng hóa thành công'),
+            content: Text('Xác nhận hàng hóa và seal thành công'),
             backgroundColor: Colors.green,
           ),
         );
@@ -170,24 +182,7 @@ class _PreDeliveryDocumentationSectionState
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  decoration: const InputDecoration(
-                    labelText: 'Mã seal',
-                    hintText: 'Nhập mã seal',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Vui lòng nhập mã seal';
-                    }
-                    return null;
-                  },
-                  onSaved: (value) {
-                    if (value != null) {
-                      viewModel.setSealCode(value);
-                    }
-                  },
-                ),
+                _buildSealSelectionSection(viewModel),
                 const SizedBox(height: 24),
                 _buildPackingProofImagesSection(viewModel),
                 const SizedBox(height: 24),
@@ -244,6 +239,247 @@ class _PreDeliveryDocumentationSectionState
     );
   }
 
+  Widget _buildSealSelectionSection(
+    PreDeliveryDocumentationViewModel viewModel,
+  ) {
+    final availableSeals = _getAvailableSeals();
+    final selectableSeals = availableSeals.where((seal) => seal.canBeSelected).toList();
+    final inUsedSeal = availableSeals.where((seal) => seal.isInUsed).firstOrNull;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.lock_outline, size: 20, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Text(
+              'Chọn seal',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 4),
+            const Text(
+              '(Bắt buộc)',
+              style: TextStyle(fontSize: 12, color: Colors.red),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        
+        // Show current seal in use if exists
+        if (inUsedSeal != null)
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200, width: 1.5),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Seal đang sử dụng',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        inUsedSeal.sealCode,
+                        style: TextStyle(
+                          color: Colors.blue.shade900,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        
+        // Seal selection cards
+        if (selectableSeals.isNotEmpty)
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: viewModel.selectedSeal == null 
+                    ? Colors.red.shade300 
+                    : Colors.grey.shade300,
+                width: 1.5,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: selectableSeals.asMap().entries.map((entry) {
+                final index = entry.key;
+                final seal = entry.value;
+                final isSelected = viewModel.selectedSeal?.sealCode == seal.sealCode;
+                final isLast = index == selectableSeals.length - 1;
+                
+                return InkWell(
+                  onTap: () => viewModel.setSelectedSeal(seal),
+                  borderRadius: BorderRadius.vertical(
+                    top: index == 0 ? const Radius.circular(12) : Radius.zero,
+                    bottom: isLast ? const Radius.circular(12) : Radius.zero,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isSelected 
+                          ? AppColors.primary.withOpacity(0.1) 
+                          : Colors.transparent,
+                      border: !isLast 
+                          ? Border(bottom: BorderSide(color: Colors.grey.shade200))
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        // Radio button
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? AppColors.primary : Colors.grey.shade400,
+                              width: 2,
+                            ),
+                            color: isSelected ? AppColors.primary : Colors.transparent,
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check, size: 16, color: Colors.white)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // Seal code badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _getSealStatusColor(seal.status).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _getSealStatusColor(seal.status).withOpacity(0.3),
+                            ),
+                          ),
+                          child: Text(
+                            seal.sealCode,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: _getSealStatusColor(seal.status),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        // Status text
+                        Expanded(
+                          child: Text(
+                            _getSealStatusText(seal.status),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        
+        // Show message if no seals available
+        if (selectableSeals.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.shade200, width: 1.5),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.warning_amber_rounded, 
+                    color: Colors.orange.shade700, 
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Không có seal khả dụng. Vui lòng liên hệ staff để được cấp seal.',
+                    style: TextStyle(
+                      color: Colors.orange.shade900,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+  
+  Color _getSealStatusColor(String status) {
+    switch (status) {
+      case 'ACTIVE':
+        return Colors.green;
+      case 'IN_USED':
+        return Colors.blue;
+      case 'REMOVED':
+        return Colors.red;
+      case 'USED':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+  
+  String _getSealStatusText(String status) {
+    switch (status) {
+      case 'ACTIVE':
+        return 'Sẵn sàng sử dụng';
+      case 'IN_USED':
+        return 'Đang sử dụng';
+      case 'REMOVED':
+        return 'Đã gỡ bỏ';
+      case 'USED':
+        return 'Đã hoàn thành';
+      default:
+        return status;
+    }
+  }
+
   Widget _buildPackingProofImagesSection(
     PreDeliveryDocumentationViewModel viewModel,
   ) {
@@ -257,12 +493,10 @@ class _PreDeliveryDocumentationSectionState
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(width: 4),
-            if (viewModel.packingProofImages.isEmpty &&
-                viewModel.sealImage == null)
-              const Text(
-                '(Bắt buộc)',
-                style: TextStyle(fontSize: 12, color: Colors.red),
-              ),
+            const Text(
+              '(Bắt buộc)',
+              style: TextStyle(fontSize: 12, color: Colors.red),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -270,9 +504,7 @@ class _PreDeliveryDocumentationSectionState
           height: 120,
           decoration: BoxDecoration(
             border: Border.all(
-              color:
-                  viewModel.packingProofImages.isEmpty &&
-                      viewModel.sealImage == null
+              color: viewModel.packingProofImages.isEmpty
                   ? Colors.red.shade300
                   : Colors.grey.shade300,
             ),
@@ -309,12 +541,10 @@ class _PreDeliveryDocumentationSectionState
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(width: 4),
-            if (viewModel.packingProofImages.isEmpty &&
-                viewModel.sealImage == null)
-              const Text(
-                '(Bắt buộc)',
-                style: TextStyle(fontSize: 12, color: Colors.red),
-              ),
+            const Text(
+              '(Bắt buộc)',
+              style: TextStyle(fontSize: 12, color: Colors.red),
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -322,9 +552,7 @@ class _PreDeliveryDocumentationSectionState
           height: 120,
           decoration: BoxDecoration(
             border: Border.all(
-              color:
-                  viewModel.packingProofImages.isEmpty &&
-                      viewModel.sealImage == null
+              color: viewModel.sealImage == null
                   ? Colors.red.shade300
                   : Colors.grey.shade300,
             ),
@@ -334,7 +562,7 @@ class _PreDeliveryDocumentationSectionState
               ? _buildAddImageButton(() => _showImageSourceOptions(false))
               : _buildImageThumbnail(
                   viewModel.sealImage!,
-                  () => viewModel.clearSealImage(), // Clear just the seal image
+                  () => viewModel.clearSealImage(),
                 ),
         ),
       ],

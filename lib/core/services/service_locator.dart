@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/datasources/api_client.dart';
 import '../../data/datasources/auth_data_source.dart';
 import '../../data/datasources/driver_data_source.dart';
+import '../../data/datasources/order_data_source.dart';
+import '../../data/datasources/photo_completion_data_source.dart';
+import '../../data/datasources/vehicle_fuel_consumption_data_source.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../data/repositories/driver_repository_impl.dart';
 import '../../data/repositories/loading_documentation_repository_impl.dart';
@@ -24,7 +26,7 @@ import '../../domain/usecases/auth/refresh_token_usecase.dart';
 import '../../domain/usecases/auth/update_driver_info_usecase.dart';
 import '../../domain/usecases/orders/get_driver_orders_usecase.dart';
 import '../../domain/usecases/orders/get_order_details_usecase.dart';
-import '../../domain/usecases/orders/submit_pre_delivery_documentation_usecase.dart';
+import '../../domain/usecases/orders/upload_seal_image_usecase.dart';
 import '../../domain/usecases/vehicle/create_vehicle_fuel_consumption_usecase.dart';
 import '../../presentation/features/account/viewmodels/account_viewmodel.dart';
 import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
@@ -36,10 +38,10 @@ import '../services/vehicle_websocket_service.dart';
 import '../services/mock_vehicle_websocket_service.dart';
 import '../services/enhanced_location_tracking_service.dart';
 import '../services/location_queue_service.dart';
-import '../services/api_service.dart';
 import '../services/token_storage_service.dart';
 import '../services/vietmap_service.dart';
 import '../services/global_location_manager.dart';
+import '../services/navigation_state_service.dart';
 
 final GetIt getIt = GetIt.instance;
 final GetIt serviceLocator = GetIt.instance;
@@ -48,7 +50,6 @@ Future<void> setupServiceLocator() async {
   // External dependencies
   final sharedPreferences = await SharedPreferences.getInstance();
   getIt.registerSingleton<SharedPreferences>(sharedPreferences);
-  getIt.registerLazySingleton<http.Client>(() => http.Client());
 
   // Token storage service
   debugPrint('Registering TokenStorageService...');
@@ -56,35 +57,14 @@ Future<void> setupServiceLocator() async {
   getIt.registerSingleton<TokenStorageService>(tokenStorageService);
   debugPrint('TokenStorageService registered successfully');
 
-  // Kiểm tra kết nối tới API
+  // API Client with base URL
   final apiUrl = 'http://10.0.2.2:8080/api/v1';
-  debugPrint('Initializing API service with URL: $apiUrl');
-
-  try {
-    final response = await http.get(Uri.parse('$apiUrl/health'));
-    debugPrint(
-      'API health check response: ${response.statusCode} - ${response.body}',
-    );
-  } catch (e) {
-    debugPrint('API health check failed: ${e.toString()}');
-    debugPrint('Continuing with setup anyway...');
-  }
-
-  // Core
-  debugPrint('Registering ApiService...');
-  final apiService = ApiService(
-    baseUrl: apiUrl,
-    client: getIt<http.Client>(),
-    tokenStorageService: tokenStorageService,
-  );
-  getIt.registerSingleton<ApiService>(apiService);
-  debugPrint('ApiService registered successfully');
-
+  debugPrint('Initializing ApiClient with base URL: $apiUrl');
   getIt.registerLazySingleton<ApiClient>(() => ApiClient(baseUrl: apiUrl));
 
   // Register VietMapService
   getIt.registerLazySingleton<VietMapService>(
-    () => VietMapService(apiService: getIt<ApiService>()),
+    () => VietMapService(apiClient: getIt<ApiClient>()),
   );
 
   // WebSocket services
@@ -122,17 +102,34 @@ Future<void> setupServiceLocator() async {
   // Register Global Location Manager (singleton)
   getIt.registerSingleton<GlobalLocationManager>(GlobalLocationManager.instance);
 
+  // Navigation state service for persistence
+  getIt.registerLazySingleton<NavigationStateService>(
+    () => NavigationStateService(getIt<SharedPreferences>()),
+  );
+
   // Data sources
   getIt.registerLazySingleton<AuthDataSourceImpl>(
     () => AuthDataSourceImpl(
-      apiService: getIt<ApiService>(),
+      apiClient: getIt<ApiClient>(),
       sharedPreferences: getIt<SharedPreferences>(),
       tokenStorageService: getIt<TokenStorageService>(),
     ),
   );
 
   getIt.registerLazySingleton<DriverDataSourceImpl>(
-    () => DriverDataSourceImpl(apiService: getIt<ApiService>()),
+    () => DriverDataSourceImpl(apiClient: getIt<ApiClient>()),
+  );
+
+  getIt.registerLazySingleton<OrderDataSource>(
+    () => OrderDataSourceImpl(getIt<ApiClient>()),
+  );
+
+  getIt.registerLazySingleton<PhotoCompletionDataSource>(
+    () => PhotoCompletionDataSourceImpl(getIt<ApiClient>()),
+  );
+
+  getIt.registerLazySingleton<VehicleFuelConsumptionDataSource>(
+    () => VehicleFuelConsumptionDataSourceImpl(getIt<ApiClient>()),
   );
 
   // Repositories
@@ -149,7 +146,7 @@ Future<void> setupServiceLocator() async {
   );
 
   getIt.registerLazySingleton<OrderRepository>(
-    () => OrderRepositoryImpl(apiService: getIt<ApiService>()),
+    () => OrderRepositoryImpl(apiClient: getIt<ApiClient>()),
   );
 
   getIt.registerLazySingleton<VehicleRepository>(
@@ -189,8 +186,8 @@ Future<void> setupServiceLocator() async {
     () => GetOrderDetailsUseCase(orderRepository: getIt<OrderRepository>()),
   );
 
-  getIt.registerLazySingleton<SubmitPreDeliveryDocumentationUseCase>(
-    () => SubmitPreDeliveryDocumentationUseCase(
+  getIt.registerLazySingleton<DocumentLoadingAndSealUseCase>(
+    () => DocumentLoadingAndSealUseCase(
       getIt<LoadingDocumentationRepository>(),
     ),
   );
@@ -235,8 +232,7 @@ Future<void> setupServiceLocator() async {
 
   getIt.registerFactory<PreDeliveryDocumentationViewModel>(
     () => PreDeliveryDocumentationViewModel(
-      submitPreDeliveryDocumentationUseCase:
-          getIt<SubmitPreDeliveryDocumentationUseCase>(),
+      documentLoadingAndSealUseCase: getIt<DocumentLoadingAndSealUseCase>(),
     ),
   );
 

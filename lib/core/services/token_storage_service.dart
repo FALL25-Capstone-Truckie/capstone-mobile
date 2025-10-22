@@ -23,7 +23,7 @@ class TokenStorageService {
   /// Lấy access token từ memory
   String? getAccessToken() {
     if (_accessToken == null) {
-      debugPrint('Getting access token: null');
+      // debugPrint('Getting access token: null');
       return null;
     }
 
@@ -32,12 +32,12 @@ class TokenStorageService {
 
     // Log token đã được làm sạch
     if (_accessToken != cleanToken) {
-      debugPrint('Token cleaned: removed invalid characters');
+      // debugPrint('Token cleaned: removed invalid characters');
     }
 
-    debugPrint(
-      'Getting access token: ${cleanToken.substring(0, min(15, cleanToken.length))}...',
-    );
+    // debugPrint(
+    //   'Getting access token: ${cleanToken.substring(0, min(15, cleanToken.length))}...',
+    // );
     return cleanToken;
   }
 
@@ -49,13 +49,13 @@ class TokenStorageService {
   /// Lưu access token vào memory
   Future<void> saveAccessToken(String token) async {
     _accessToken = token;
-    debugPrint('Access token saved to memory: ${token.substring(0, 15)}...');
+    // debugPrint('Access token saved to memory: ${token.substring(0, 15)}...');
   }
 
   /// Xóa access token khỏi memory
   Future<void> clearAccessToken() async {
     _accessToken = null;
-    debugPrint('Access token cleared from memory');
+    // debugPrint('Access token cleared from memory');
   }
 
   /// Lấy refresh token từ secure storage
@@ -64,7 +64,7 @@ class TokenStorageService {
       final token = await _secureStorage.read(key: _refreshTokenKey);
       return token;
     } catch (e) {
-      debugPrint('Error reading refresh token: $e');
+      // debugPrint('Error reading refresh token: $e');
       return null;
     }
   }
@@ -73,9 +73,9 @@ class TokenStorageService {
   Future<void> saveRefreshToken(String token) async {
     try {
       await _secureStorage.write(key: _refreshTokenKey, value: token);
-      debugPrint('Refresh token saved to secure storage');
+      // debugPrint('Refresh token saved to secure storage');
     } catch (e) {
-      debugPrint('Error saving refresh token: $e');
+      // debugPrint('Error saving refresh token: $e');
       rethrow;
     }
   }
@@ -84,9 +84,9 @@ class TokenStorageService {
   Future<void> clearRefreshToken() async {
     try {
       await _secureStorage.delete(key: _refreshTokenKey);
-      debugPrint('Refresh token cleared from secure storage');
+      // debugPrint('Refresh token cleared from secure storage');
     } catch (e) {
-      debugPrint('Error clearing refresh token: $e');
+      // debugPrint('Error clearing refresh token: $e');
     }
   }
 
@@ -94,7 +94,7 @@ class TokenStorageService {
   Future<void> clearAllTokens() async {
     await clearAccessToken();
     await clearRefreshToken();
-    debugPrint('All tokens cleared');
+    // debugPrint('All tokens cleared');
   }
 
   /// Kiểm tra xem có access token không
