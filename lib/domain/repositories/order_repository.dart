@@ -10,4 +10,13 @@ abstract class OrderRepository {
   Future<Either<Failure, OrderWithDetails>> getOrderDetailsForDriver(
     String orderId,
   );
+  
+  /// Update order status to ONGOING_DELIVERED when near delivery point (within 3km)
+  Future<Either<Failure, bool>> updateToOngoingDelivered(String orderId);
+  
+  /// Update order status to DELIVERED when arriving at delivery point
+  Future<Either<Failure, bool>> updateToDelivered(String orderId);
+  
+  /// Update order status to SUCCESSFUL when driver confirms trip completion
+  Future<Either<Failure, bool>> updateToSuccessful(String orderId);
 }

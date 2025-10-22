@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../../app/app_routes.dart';
 import '../../../../../core/services/ocr_service.dart';
-import '../../../../../core/utils/driver_role_checker.dart';
+import '../../../../utils/driver_role_checker.dart';
 import '../../../../../domain/entities/order_with_details.dart';
 import '../../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../../../presentation/theme/app_colors.dart';

@@ -5,10 +5,9 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show debugPrint;
 
-import '../../../../core/services/service_locator.dart';
-import '../../../../data/datasources/photo_completion_data_source.dart';
-import '../../../../data/datasources/vehicle_fuel_consumption_data_source.dart';
 import '../../../../domain/entities/order_with_details.dart';
+import '../../../../domain/repositories/photo_completion_repository.dart';
+import '../../../../domain/repositories/vehicle_fuel_consumption_repository.dart';
 import '../../../../domain/usecases/orders/get_order_details_usecase.dart';
 import '../../../../domain/usecases/vehicle/create_vehicle_fuel_consumption_usecase.dart';
 import '../../../common_widgets/base_viewmodel.dart';
@@ -19,10 +18,9 @@ enum StartDeliveryState { initial, loading, success, error }
 
 class OrderDetailViewModel extends BaseViewModel {
   final GetOrderDetailsUseCase _getOrderDetailsUseCase;
-  final CreateVehicleFuelConsumptionUseCase
-  _createVehicleFuelConsumptionUseCase;
-  final PhotoCompletionDataSource _photoCompletionDataSource = getIt<PhotoCompletionDataSource>();
-  final VehicleFuelConsumptionDataSource _fuelConsumptionDataSource = getIt<VehicleFuelConsumptionDataSource>();
+  final CreateVehicleFuelConsumptionUseCase _createVehicleFuelConsumptionUseCase;
+  final PhotoCompletionRepository _photoCompletionRepository;
+  final VehicleFuelConsumptionRepository _fuelConsumptionRepository;
 
   OrderDetailState _state = OrderDetailState.initial;
   StartDeliveryState _startDeliveryState = StartDeliveryState.initial;
@@ -60,11 +58,13 @@ class OrderDetailViewModel extends BaseViewModel {
 
   OrderDetailViewModel({
     required GetOrderDetailsUseCase getOrderDetailsUseCase,
-    required CreateVehicleFuelConsumptionUseCase
-    createVehicleFuelConsumptionUseCase,
+    required CreateVehicleFuelConsumptionUseCase createVehicleFuelConsumptionUseCase,
+    required PhotoCompletionRepository photoCompletionRepository,
+    required VehicleFuelConsumptionRepository fuelConsumptionRepository,
   }) : _getOrderDetailsUseCase = getOrderDetailsUseCase,
-       _createVehicleFuelConsumptionUseCase =
-           createVehicleFuelConsumptionUseCase;
+       _createVehicleFuelConsumptionUseCase = createVehicleFuelConsumptionUseCase,
+       _photoCompletionRepository = photoCompletionRepository,
+       _fuelConsumptionRepository = fuelConsumptionRepository;
 
   Future<void> getOrderDetails(String orderId) async {
     if (_state == OrderDetailState.loading) return; // Tránh gọi nhiều lần

@@ -7,7 +7,7 @@ import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 import '../../../../app/app_routes.dart';
 import '../../../../core/services/global_location_manager.dart';
 import '../../../../core/services/navigation_state_service.dart';
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../viewmodels/navigation_viewmodel.dart';

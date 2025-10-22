@@ -10,7 +10,7 @@ import '../../../../domain/usecases/auth/login_usecase.dart';
 import '../../../../domain/usecases/auth/logout_usecase.dart';
 import '../../../../domain/usecases/auth/refresh_token_usecase.dart';
 import '../../../../app/app_routes.dart';
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../core/services/token_storage_service.dart';
 import '../../../common_widgets/base_viewmodel.dart';
 

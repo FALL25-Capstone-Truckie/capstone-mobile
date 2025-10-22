@@ -6,9 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/errors/exceptions.dart';
 import 'api_client.dart';
 import '../../core/services/token_storage_service.dart';
-import '../../domain/entities/auth_response.dart';
-import '../../domain/entities/token_response.dart';
 import '../../domain/entities/user.dart';
+import '../models/auth_response_model.dart';
+import '../models/token_response_model.dart';
+import '../models/user_model.dart';
 
 abstract class AuthDataSource {
   /// Đăng nhập với tên đăng nhập và mật khẩu
@@ -74,7 +75,8 @@ class AuthDataSourceImpl implements AuthDataSource {
       }
 
       // debugPrint('Login successful, processing user data');
-      final authResponse = AuthResponse.fromJson(response.data['data']);
+      final authResponseModel = AuthResponseModel.fromJson(response.data['data']);
+      final authResponse = authResponseModel.toEntity();
 
       // Lưu tokens
       await tokenStorageService.saveAccessToken(authResponse.authToken);
@@ -251,7 +253,8 @@ class AuthDataSourceImpl implements AuthDataSource {
       }
 
       final userMap = json.decode(userJson);
-      return User.fromJson(userMap);
+      final userModel = UserModel.fromJson(userMap);
+      return userModel.toEntity();
     } catch (e) {
       throw CacheException(
         message: 'Lấy thông tin người dùng thất bại: ${e.toString()}',
@@ -264,26 +267,24 @@ class AuthDataSourceImpl implements AuthDataSource {
     try {
       // Access token đã được lưu trong TokenStorageService khi login
       // Chỉ cần lưu thông tin user vào SharedPreferences
-      final userMap = {
-        'id': user.id,
-        'username': user.username,
-        'fullName': user.fullName,
-        'email': user.email,
-        'phoneNumber': user.phoneNumber,
-        'gender': user.gender,
-        'dateOfBirth': user.dateOfBirth,
-        'imageUrl': user.imageUrl,
-        'status': user.status,
-        'role': {
-          'id': user.role.id,
-          'roleName': user.role.roleName,
-          'description': user.role.description,
-          'isActive': user.role.isActive,
-        },
-        'authToken': user.authToken,
-      };
+      
+      // Convert User entity to UserModel for serialization
+      final userModel = UserModel(
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        gender: user.gender,
+        dateOfBirth: user.dateOfBirth,
+        imageUrl: user.imageUrl,
+        status: user.status,
+        role: user.role,
+        authToken: user.authToken,
+        refreshToken: user.refreshToken,
+      );
 
-      await sharedPreferences.setString('user_info', json.encode(userMap));
+      await sharedPreferences.setString('user_info', json.encode(userModel.toJson()));
     } catch (e) {
       throw CacheException(
         message: 'Lưu thông tin người dùng thất bại: ${e.toString()}',

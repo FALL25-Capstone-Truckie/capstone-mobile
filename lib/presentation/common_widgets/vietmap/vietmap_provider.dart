@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../core/services/api_service.dart';
-import '../../../core/services/service_locator.dart';
+import '../../../app/di/service_locator.dart';
 import '../../../core/services/token_storage_service.dart';
 import '../../../core/services/vietmap_service.dart';
 import 'vietmap_viewmodel.dart';

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
 import '../../../../core/utils/responsive_extensions.dart';
 import '../../../../domain/entities/driver.dart';

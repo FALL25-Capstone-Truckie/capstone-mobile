@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../domain/entities/order_with_details.dart';
 import '../viewmodels/order_list_viewmodel.dart';
 import '../viewmodels/pre_delivery_documentation_viewmodel.dart';

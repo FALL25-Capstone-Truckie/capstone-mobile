@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../../core/services/service_locator.dart';
+import '../../../../../app/di/service_locator.dart';
 import '../../../../../domain/entities/order_detail.dart';
 import '../../../../../domain/entities/order_with_details.dart';
 import '../../../../../presentation/theme/app_colors.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../domain/entities/order_with_details.dart';
-import '../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
+import '../../domain/entities/order_with_details.dart';
+import '../features/auth/viewmodels/auth_viewmodel.dart';
 
 /// Utility class để kiểm tra driver role và permissions
 class DriverRoleChecker {

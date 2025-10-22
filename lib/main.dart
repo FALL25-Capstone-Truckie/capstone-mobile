@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 
 import 'app/app.dart';
 import 'app/app_routes.dart';
+import 'app/di/service_locator.dart';
 import 'core/services/hot_reload_helper.dart';
-import 'core/services/index.dart';
 import 'core/services/vietmap_service.dart';
 import 'presentation/common_widgets/vietmap/vietmap_viewmodel.dart';
 import 'presentation/features/auth/index.dart';

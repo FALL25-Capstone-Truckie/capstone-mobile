@@ -1,9 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/services/token_storage_service.dart';
-import '../../core/services/service_locator.dart';
+import '../../core/services/http_client_interface.dart';
+import '../../app/di/service_locator.dart';
 
-class ApiClient {
+class ApiClient implements IHttpClient {
   final String baseUrl;
   late final Dio dio;
   late final TokenStorageService _tokenStorageService;
@@ -41,6 +42,60 @@ class ApiClient {
           return handler.next(response);
         },
       ),
+    );
+  }
+
+  @override
+  Future<Response> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) {
+    return dio.get(path, queryParameters: queryParameters, options: options);
+  }
+
+  @override
+  Future<Response> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) {
+    return dio.post(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
+  }
+
+  @override
+  Future<Response> put(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) {
+    return dio.put(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
+  }
+
+  @override
+  Future<Response> delete(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) {
+    return dio.delete(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
     );
   }
 }

@@ -3,16 +3,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../data/datasources/api_client.dart';
+import 'http_client_interface.dart';
 
 class VietMapService {
-  final ApiClient _apiClient;
+  final IHttpClient _apiClient;
   static const String _cacheKey = 'vietmap_mobile_styles';
   static const Duration _cacheDuration = Duration(days: 7); // Cache 7 ngày
   String? _cachedStyle;
   DateTime? _cacheTimestamp;
 
-  VietMapService({required ApiClient apiClient}) : _apiClient = apiClient;
+  VietMapService({required IHttpClient apiClient}) : _apiClient = apiClient;
 
   // Lấy style map từ API backend
   Future<String> getMobileStyles() async {

@@ -1,5 +1,4 @@
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
-// import '../../presentation/common_widgets/vietmap/vietmap_widget_temp.dart';
 
 class VietMapConfig {
   final CameraPosition initialCameraPosition;

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../core/services/service_locator.dart';
+import '../../app/di/service_locator.dart';
 import '../features/auth/viewmodels/auth_viewmodel.dart';
 
 /// BaseViewModel cung cấp các chức năng cơ bản cho tất cả các ViewModel
