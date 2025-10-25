@@ -13,24 +13,6 @@ class Role extends Equatable {
     required this.isActive,
   });
 
-  factory Role.fromJson(Map<String, dynamic> json) {
-    return Role(
-      id: json['id'] ?? '',
-      roleName: json['roleName'] ?? '',
-      description: json['description'] ?? '',
-      isActive: json['isActive'] ?? false,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'roleName': roleName,
-      'description': description,
-      'isActive': isActive,
-    };
-  }
-
   @override
   List<Object?> get props => [id, roleName, description, isActive];
 }

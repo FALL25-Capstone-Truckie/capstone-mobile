@@ -7,6 +7,13 @@ import '../../core/errors/failures.dart';
 import '../../core/errors/exceptions.dart';
 
 abstract class VehicleFuelConsumptionDataSource {
+  /// Create vehicle fuel consumption record
+  Future<String> createVehicleFuelConsumption(
+    String orderId,
+    double fuelConsumption,
+    double odometer,
+  );
+  
   /// Update final odometer reading with image
   Future<Either<Failure, bool>> updateFinalReading({
     required String fuelConsumptionId,
@@ -22,6 +29,39 @@ class VehicleFuelConsumptionDataSourceImpl implements VehicleFuelConsumptionData
   final ApiClient _apiClient;
 
   VehicleFuelConsumptionDataSourceImpl(this._apiClient);
+
+  @override
+  Future<String> createVehicleFuelConsumption(
+    String orderId,
+    double fuelConsumption,
+    double odometer,
+  ) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '/vehicle-fuel-consumptions',
+        data: {
+          'orderId': orderId,
+          'fuelConsumption': fuelConsumption,
+          'odometerReadingAtStart': odometer,
+        },
+      );
+
+      if (response.data['success'] == true && response.data['data'] != null) {
+        return response.data['data']['id'] as String;
+      } else {
+        throw ServerException(
+          message: response.data['message'] ?? 'Failed to create fuel consumption',
+          statusCode: response.statusCode ?? 500,
+        );
+      }
+    } catch (e) {
+      if (e is ServerException) rethrow;
+      throw ServerException(
+        message: 'Failed to create fuel consumption: ${e.toString()}',
+        statusCode: 500,
+      );
+    }
+  }
 
   @override
   Future<Either<Failure, bool>> updateFinalReading({

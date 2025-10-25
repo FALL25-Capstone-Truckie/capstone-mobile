@@ -1,4 +1,5 @@
 import '../../domain/entities/order_with_details.dart';
+import '../../domain/entities/order_detail.dart';
 import 'order_detail_model.dart';
 
 class OrderWithDetailsModel extends OrderWithDetails {
@@ -20,6 +21,7 @@ class OrderWithDetailsModel extends OrderWithDetails {
     required super.senderCompanyName,
     required super.categoryName,
     required List<OrderDetailModel> super.orderDetails,
+    super.vehicleAssignments = const [],
   });
 
   factory OrderWithDetailsModel.fromJson(Map<String, dynamic> json) {
@@ -47,6 +49,11 @@ class OrderWithDetailsModel extends OrderWithDetails {
               ?.map((e) => OrderDetailModel.fromJson(e))
               .toList() ??
           [],
+      vehicleAssignments:
+          (json['vehicleAssignments'] as List<dynamic>?)
+              ?.map((e) => VehicleAssignmentModel.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 
@@ -70,6 +77,9 @@ class OrderWithDetailsModel extends OrderWithDetails {
       'categoryName': categoryName,
       'orderDetails': orderDetails
           .map((e) => (e as OrderDetailModel).toJson())
+          .toList(),
+      'vehicleAssignments': vehicleAssignments
+          .map((e) => (e as VehicleAssignmentModel).toJson())
           .toList(),
     };
   }

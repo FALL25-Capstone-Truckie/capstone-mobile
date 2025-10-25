@@ -2,19 +2,33 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'enhanced_location_tracking_service.dart';
-import 'service_locator.dart';
 import 'navigation_state_service.dart';
 
 /// Global Location Manager - Quản lý location tracking xuyên suốt app lifecycle
 /// Đảm bảo WebSocket connection không bị ngắt khi navigate giữa các màn hình
 class GlobalLocationManager {
   static GlobalLocationManager? _instance;
-  static GlobalLocationManager get instance => _instance ??= GlobalLocationManager._();
+  static GlobalLocationManager get instance {
+    if (_instance == null) {
+      throw StateError('GlobalLocationManager not initialized. Call initialize() first.');
+    }
+    return _instance!;
+  }
   
-  GlobalLocationManager._();
-
-  // Core services
-  final EnhancedLocationTrackingService _enhancedService = getIt<EnhancedLocationTrackingService>();
+  final EnhancedLocationTrackingService _enhancedService;
+  final NavigationStateService _navigationStateService;
+  
+  GlobalLocationManager._(
+    this._enhancedService,
+    this._navigationStateService,
+  );
+  
+  static void initialize(
+    EnhancedLocationTrackingService enhancedService,
+    NavigationStateService navigationStateService,
+  ) {
+    _instance = GlobalLocationManager._(enhancedService, navigationStateService);
+  }
   
   // GPS tracking
   StreamSubscription<Position>? _positionStream;
@@ -571,7 +585,7 @@ class GlobalLocationManager {
     }
 
     try {
-      final stateService = getIt<NavigationStateService>();
+      final stateService = _navigationStateService;
       
       if (latitude != null && longitude != null) {
         // Update position
@@ -601,7 +615,7 @@ class GlobalLocationManager {
     try {
       debugPrint('🔍 tryRestoreNavigationState - Starting...');
       
-      final stateService = getIt<NavigationStateService>();
+      final stateService = _navigationStateService;
       debugPrint('   - NavigationStateService obtained');
       
       final savedState = stateService.getSavedNavigationState();
@@ -669,7 +683,7 @@ class GlobalLocationManager {
   /// Clear saved navigation state (call when trip is completed)
   Future<void> clearSavedNavigationState() async {
     try {
-      final stateService = getIt<NavigationStateService>();
+      final stateService = _navigationStateService;
       await stateService.clearNavigationState();
       debugPrint('✅ Saved navigation state cleared');
     } catch (e) {

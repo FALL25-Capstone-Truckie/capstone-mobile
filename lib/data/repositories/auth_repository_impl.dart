@@ -65,11 +65,11 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Either<Failure, TokenResponse>> refreshToken() async {
+  Future<Either<Failure, User>> refreshToken() async {
     try {
       // Gọi API để làm mới token sử dụng HTTP-only cookie
-      final tokenResponse = await dataSource.refreshToken();
-      return Right(tokenResponse);
+      final user = await dataSource.refreshToken();
+      return Right(user);
     } on ServerException catch (e) {
       return Left(ServerFailure(message: e.message));
     } on NetworkException catch (e) {

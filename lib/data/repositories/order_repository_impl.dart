@@ -1,9 +1,11 @@
 import 'package:dartz/dartz.dart' hide Order;
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../core/errors/exceptions.dart';
 import '../../core/errors/failures.dart';
 import '../datasources/api_client.dart';
+import '../datasources/order_data_source.dart';
 import '../../domain/entities/order.dart';
 import '../../domain/entities/order_with_details.dart';
 import '../../domain/repositories/order_repository.dart';
@@ -12,9 +14,13 @@ import '../models/order_with_details_model.dart';
 
 class OrderRepositoryImpl implements OrderRepository {
   final ApiClient _apiClient;
+  final OrderDataSource _orderDataSource;
 
-  OrderRepositoryImpl({required ApiClient apiClient})
-    : _apiClient = apiClient;
+  OrderRepositoryImpl({
+    required ApiClient apiClient,
+    required OrderDataSource orderDataSource,
+  }) : _apiClient = apiClient,
+       _orderDataSource = orderDataSource;
 
   @override
   Future<Either<Failure, List<Order>>> getDriverOrders() async {
@@ -112,5 +118,20 @@ class OrderRepositoryImpl implements OrderRepository {
     } catch (e) {
       return Left(ServerFailure(message: e.toString()));
     }
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateToOngoingDelivered(String orderId) async {
+    return await _orderDataSource.updateToOngoingDelivered(orderId);
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateToDelivered(String orderId) async {
+    return await _orderDataSource.updateToDelivered(orderId);
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateToSuccessful(String orderId) async {
+    return await _orderDataSource.updateToSuccessful(orderId);
   }
 }

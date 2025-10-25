@@ -1,19 +1,18 @@
 import 'package:flutter/foundation.dart';
-import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
-import 'service_locator.dart';
+import '../../app/di/service_locator.dart';
 
 /// Helper class to handle hot reload issues
 class HotReloadHelper {
   /// Reset all singletons that might cause issues during hot reload
   static void resetProblematicInstances() {
     try {
-      // Reset AuthViewModel static instance
-      AuthViewModel.resetInstance();
-
-      // Reset the AuthViewModel in GetIt
-      if (getIt.isRegistered<AuthViewModel>()) {
-        debugPrint('Resetting AuthViewModel in service locator');
-        // For factory registrations, no need to reset
+      // Reset AuthViewModel using dynamic to avoid presentation layer dependency
+      try {
+        final authViewModel = getIt.get(instanceName: 'AuthViewModel');
+        // AuthViewModel reset is not needed - handled by service locator
+        debugPrint('ℹ️ AuthViewModel managed by service locator');
+      } catch (e) {
+        debugPrint('AuthViewModel not available for reset: $e');
       }
 
       debugPrint('Successfully reset instances for hot reload');

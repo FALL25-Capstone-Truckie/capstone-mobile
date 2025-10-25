@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile App Dependencies Table</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 2px solid #ddd;
+            background-color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .filter-btn:hover {
+            border-color: #1677ff;
+            color: #1677ff;
+        }
+
+        .filter-btn.active {
+            background-color: #1677ff;
+            color: white;
+            border-color: #1677ff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+
+        th {
+            background-color: #f0f0f0;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+            color: #333;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        .from-layer {
+            font-weight: 600;
+            color: #1677ff;
+            min-width: 100px;
+        }
+
+        .to-layer {
+            font-weight: 600;
+            color: #52c41a;
+            min-width: 100px;
+        }
+
+        .reason {
+            color: #666;
+            font-size: 13px;
+        }
+
+        .example {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #333;
+            overflow-x: auto;
+        }
+
+        .summary {
+            background-color: #f0f5ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #1677ff;
+        }
+
+        .summary h3 {
+            color: #1677ff;
+            margin-bottom: 10px;
+        }
+
+        .summary-item {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 10px;
+        }
+
+        .summary-item strong {
+            color: #333;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #ddd;
+        }
+
+        .legend-item {
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .legend-item strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .legend-item small {
+            color: #666;
+        }
+
+        .tech-stack {
+            background-color: #fff7e6;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #faad14;
+        }
+
+        .tech-stack h3 {
+            color: #ad6800;
+            margin-bottom: 10px;
+        }
+
+        .tech-stack p {
+            color: #666;
+            font-size: 13px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Truckie Mobile App - Dependencies</h1>
+        <p class="subtitle">Chi tiết các liên kết giữa các layers (Clean Architecture)</p>
+
+        <div class="tech-stack">
+            <h3>📱 Technology Stack</h3>
+            <p><strong>Framework:</strong> Flutter/Dart</p>
+            <p><strong>Architecture:</strong> Clean Architecture (4 layers)</p>
+            <p><strong>State Management:</strong> Provider</p>
+            <p><strong>Networking:</strong> Dio, STOMP WebSocket</p>
+            <p><strong>Maps:</strong> Google Maps, VietMap</p>
+            <p><strong>Storage:</strong> SharedPreferences, Hive, SQLite, SecureStorage</p>
+        </div>
+
+        <div class="summary">
+            <h3>📊 Tóm tắt</h3>
+            <div class="summary-item"><strong>Tổng dependencies:</strong> 32</div>
+            <div class="summary-item"><strong>Layers:</strong> 4 (11 subdirectories)</div>
+            <div class="summary-item"><strong>Circular deps:</strong> 0 ✓</div>
+            <div class="summary-item"><strong>Status:</strong> Chi tiết toàn bộ subdirectories ✅</div>
+        </div>
+
+        <div class="controls">
+            <button class="filter-btn active" onclick="filterByLayer('all')">Tất cả</button>
+            <button class="filter-btn" onclick="filterByLayer('presentation')">Presentation</button>
+            <button class="filter-btn" onclick="filterByLayer('domain')">Domain</button>
+            <button class="filter-btn" onclick="filterByLayer('data')">Data</button>
+            <button class="filter-btn" onclick="filterByLayer('core')">Core</button>
+            <button class="filter-btn" onclick="filterByLayer('presentation_internal')">Presentation Nội bộ</button>
+            <button class="filter-btn" onclick="filterByLayer('domain_internal')">Domain Nội bộ</button>
+            <button class="filter-btn" onclick="filterByLayer('data_internal')">Data Nội bộ</button>
+            <button class="filter-btn" onclick="filterByLayer('core_internal')">Core Nội bộ</button>
+        </div>
+
+        <table id="dependenciesTable">
+            <thead>
+                <tr>
+                    <th style="width: 15%">Từ Layer</th>
+                    <th style="width: 15%">Đến Layer</th>
+                    <th style="width: 25%">Lý do</th>
+                    <th style="width: 45%">Ví dụ Import</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+
+        <div class="legend">
+            <div class="legend-item">
+                <strong>🌟 Layer 1: PRESENTATION</strong>
+                <small>UI Layer - Screens, Widgets, Providers</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ features/</strong>
+                <small>Auth, Home, Orders, Delivery, Profile screens</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ common_widgets/</strong>
+                <small>Reusable UI components (buttons, dialogs, etc)</small>
+            </div>
+            <div class="legend-item">
+                <strong>└─ theme/</strong>
+                <small>Colors, typography, text styles</small>
+            </div>
+            
+            <div class="legend-item">
+                <strong>🌟 Layer 2: DOMAIN</strong>
+                <small>Business Logic - Pure Dart, no Flutter</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ entities/</strong>
+                <small>Driver, Order, User, Delivery, Vehicle entities</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ repositories/</strong>
+                <small>Repository interfaces (abstract classes)</small>
+            </div>
+            <div class="legend-item">
+                <strong>└─ usecases/</strong>
+                <small>Business logic use cases (auth/, orders/, vehicle/)</small>
+            </div>
+            
+            <div class="legend-item">
+                <strong>🌟 Layer 3: DATA</strong>
+                <small>Data Access Layer - API, Database, Cache</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ datasources/</strong>
+                <small>API clients, local storage, remote sources</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ models/</strong>
+                <small>OrderModel, DriverModel, UserModel (JSON serializable)</small>
+            </div>
+            <div class="legend-item">
+                <strong>└─ repositories/</strong>
+                <small>Repository implementations (Impl classes)</small>
+            </div>
+            
+            <div class="legend-item">
+                <strong>🌟 Layer 4: CORE</strong>
+                <small>Foundation - Used by all layers</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ constants/</strong>
+                <small>API endpoints, colors, dimensions, validation patterns</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ errors/</strong>
+                <small>Exceptions, Failures, error handling</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ models/</strong>
+                <small>API response models, base models</small>
+            </div>
+            <div class="legend-item">
+                <strong>├─ services/</strong>
+                <small>API service, location service, WebSocket, service locator</small>
+            </div>
+            <div class="legend-item">
+                <strong>└─ utils/</strong>
+                <small>Helper functions, extensions, utilities</small>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dependencies = [
+            // ========== PRESENTATION LAYER ==========
+            // Internal: features <-> common_widgets <-> theme
+            { from: 'presentation/features', to: 'presentation/common_widgets', layer: 1, reason: 'Sử dụng reusable widgets', example: "import 'package:capstone_mobile/presentation/common_widgets/custom_button.dart';" },
+            { from: 'presentation/features', to: 'presentation/theme', layer: 1, reason: 'Sử dụng theme colors, typography', example: "import 'package:capstone_mobile/presentation/theme/app_colors.dart';" },
+            { from: 'presentation/common_widgets', to: 'presentation/theme', layer: 1, reason: 'Sử dụng theme styling', example: "import 'package:capstone_mobile/presentation/theme/app_text_styles.dart';" },
+            // Presentation -> Domain
+            { from: 'presentation/features', to: 'domain/usecases', layer: 1, reason: 'Gọi use cases', example: "import 'package:capstone_mobile/domain/usecases/order_usecase.dart';" },
+            { from: 'presentation/features', to: 'domain/entities', layer: 1, reason: 'Sử dụng entities', example: "import 'package:capstone_mobile/domain/entities/order_entity.dart';" },
+            // Presentation -> Core
+            { from: 'presentation/common_widgets', to: 'core/constants', layer: 1, reason: 'Sử dụng dimension constants', example: "import 'package:capstone_mobile/core/constants/dimension_constants.dart';" },
+            { from: 'presentation/theme', to: 'core/constants', layer: 1, reason: 'Sử dụng color constants', example: "import 'package:capstone_mobile/core/constants/color_constants.dart';" },
+            { from: 'presentation/features', to: 'core/services', layer: 1, reason: 'Sử dụng service locator', example: "import 'package:capstone_mobile/core/services/service_locator.dart';" },
+            { from: 'presentation/features', to: 'core/utils', layer: 1, reason: 'Sử dụng utilities', example: "import 'package:capstone_mobile/core/utils/responsive_extensions.dart';" },
+
+            // ========== DOMAIN LAYER ==========
+            // usecases -> entities
+            { from: 'domain/usecases', to: 'domain/entities', layer: 2, reason: 'Sử dụng entities trong return type', example: "import 'package:capstone_mobile/domain/entities/order_entity.dart';" },
+            // usecases -> repositories
+            { from: 'domain/usecases', to: 'domain/repositories', layer: 2, reason: 'Gọi repository interfaces', example: "import 'package:capstone_mobile/domain/repositories/order_repository.dart';" },
+            // repositories -> entities
+            { from: 'domain/repositories', to: 'domain/entities', layer: 2, reason: 'Sử dụng entities trong interface', example: "import 'package:capstone_mobile/domain/entities/driver_entity.dart';" },
+            // Domain -> Core
+            { from: 'domain/usecases', to: 'core/errors', layer: 2, reason: 'Sử dụng Failure objects', example: "import 'package:capstone_mobile/core/errors/failures.dart';" },
+            { from: 'domain/repositories', to: 'core/errors', layer: 2, reason: 'Sử dụng Failure trong interface', example: "import 'package:capstone_mobile/core/errors/failures.dart';" },
+            { from: 'domain/usecases', to: 'core/constants', layer: 2, reason: 'Sử dụng validation constants', example: "import 'package:capstone_mobile/core/constants/validation_constants.dart';" },
+
+            // ========== DATA LAYER ==========
+            // datasources -> models
+            { from: 'data/datasources', to: 'data/models', layer: 3, reason: 'Sử dụng models từ API', example: "import 'package:capstone_mobile/data/models/order_model.dart';" },
+            // repositories -> datasources
+            { from: 'data/repositories', to: 'data/datasources', layer: 3, reason: 'Gọi datasources để lấy dữ liệu', example: "import 'package:capstone_mobile/data/datasources/order_datasource.dart';" },
+            // repositories -> models
+            { from: 'data/repositories', to: 'data/models', layer: 3, reason: 'Map models to entities', example: "import 'package:capstone_mobile/data/models/driver_model.dart';" },
+            // Data -> Domain
+            { from: 'data/repositories', to: 'domain/repositories', layer: 3, reason: 'Implement domain repository interfaces', example: "import 'package:capstone_mobile/domain/repositories/order_repository.dart';" },
+            { from: 'data/repositories', to: 'domain/entities', layer: 3, reason: 'Sử dụng entities trong return type', example: "import 'package:capstone_mobile/domain/entities/order_entity.dart';" },
+            { from: 'data/models', to: 'domain/entities', layer: 3, reason: 'Map models to entities', example: "import 'package:capstone_mobile/domain/entities/user_entity.dart';" },
+            // Data -> Core
+            { from: 'data/datasources', to: 'core/services', layer: 3, reason: 'Sử dụng API service, location service', example: "import 'package:capstone_mobile/core/services/api_service.dart';" },
+            { from: 'data/datasources', to: 'core/models', layer: 3, reason: 'Sử dụng API response models', example: "import 'package:capstone_mobile/core/models/api_response.dart';" },
+            { from: 'data/datasources', to: 'core/errors', layer: 3, reason: 'Sử dụng exceptions', example: "import 'package:capstone_mobile/core/errors/exceptions.dart';" },
+            { from: 'data/repositories', to: 'core/errors', layer: 3, reason: 'Sử dụng failures', example: "import 'package:capstone_mobile/core/errors/failures.dart';" },
+            { from: 'data/models', to: 'core/models', layer: 3, reason: 'Extend core models nếu cần', example: "import 'package:capstone_mobile/core/models/base_model.dart';" },
+            { from: 'data/datasources', to: 'core/constants', layer: 3, reason: 'Sử dụng API constants, storage keys', example: "import 'package:capstone_mobile/core/constants/api_constants.dart';" },
+
+            // ========== CORE LAYER ==========
+            // services -> constants
+            { from: 'core/services', to: 'core/constants', layer: 4, reason: 'Sử dụng API constants, endpoints', example: "import 'package:capstone_mobile/core/constants/api_constants.dart';" },
+            // services -> models
+            { from: 'core/services', to: 'core/models', layer: 4, reason: 'Sử dụng response models', example: "import 'package:capstone_mobile/core/models/api_response.dart';" },
+            // services -> errors
+            { from: 'core/services', to: 'core/errors', layer: 4, reason: 'Throw exceptions', example: "import 'package:capstone_mobile/core/errors/exceptions.dart';" },
+            // utils -> constants
+            { from: 'core/utils', to: 'core/constants', layer: 4, reason: 'Sử dụng constants', example: "import 'package:capstone_mobile/core/constants/dimension_constants.dart';" },
+            // errors -> constants
+            { from: 'core/errors', to: 'core/constants', layer: 4, reason: 'Sử dụng error messages', example: "import 'package:capstone_mobile/core/constants/error_messages.dart';" }
+        ];
+
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="no-results">Không có dữ liệu</td></tr>';
+                return;
+            }
+
+            data.forEach((dep, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><span class="from-layer">${dep.from}</span></td>
+                    <td><span class="to-layer">${dep.to}</span></td>
+                    <td><span class="reason">${dep.reason}</span></td>
+                    <td><div class="example">${dep.example}</div></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function filterByLayer(layer) {
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            if (event && event.target) event.target.classList.add('active');
+
+            let filtered = dependencies;
+            
+            if (layer === 'all') {
+                filtered = dependencies;
+            } else if (layer === 'presentation_internal') {
+                filtered = dependencies.filter(dep => dep.from.includes('presentation/') && dep.to.includes('presentation/'));
+            } else if (layer === 'domain_internal') {
+                filtered = dependencies.filter(dep => dep.from.includes('domain/') && dep.to.includes('domain/'));
+            } else if (layer === 'data_internal') {
+                filtered = dependencies.filter(dep => dep.from.includes('data/') && dep.to.includes('data/'));
+            } else if (layer === 'core_internal') {
+                filtered = dependencies.filter(dep => dep.from.includes('core/') && dep.to.includes('core/'));
+            } else {
+                filtered = dependencies.filter(dep => dep.from.startsWith(layer));
+            }
+
+            renderTable(filtered);
+        }
+
+        // Initial render
+        renderTable(dependencies);
+    </script>
+</body>
+</html>

@@ -6,9 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/errors/exceptions.dart';
 import 'api_client.dart';
 import '../../core/services/token_storage_service.dart';
-import '../../domain/entities/auth_response.dart';
-import '../../domain/entities/token_response.dart';
 import '../../domain/entities/user.dart';
+import '../models/auth_response_model.dart';
+import '../models/token_response_model.dart';
+import '../models/user_model.dart';
 
 abstract class AuthDataSource {
   /// Đăng nhập với tên đăng nhập và mật khẩu
@@ -30,7 +31,7 @@ abstract class AuthDataSource {
   Future<void> clearUserInfo();
 
   /// Refresh token
-  Future<TokenResponse> refreshToken();
+  Future<User> refreshToken();
 
   /// Đổi mật khẩu
   Future<bool> changePassword(
@@ -74,7 +75,8 @@ class AuthDataSourceImpl implements AuthDataSource {
       }
 
       // debugPrint('Login successful, processing user data');
-      final authResponse = AuthResponse.fromJson(response.data['data']);
+      final authResponseModel = AuthResponseModel.fromJson(response.data['data']);
+      final authResponse = authResponseModel.toEntity();
 
       // Lưu tokens
       await tokenStorageService.saveAccessToken(authResponse.authToken);
@@ -106,7 +108,7 @@ class AuthDataSourceImpl implements AuthDataSource {
   }
 
   @override
-  Future<TokenResponse> refreshToken() async {
+  Future<User> refreshToken() async {
     try {
       // debugPrint('Attempting to refresh token');
 
@@ -128,23 +130,27 @@ class AuthDataSourceImpl implements AuthDataSource {
 
       if (response.data['success'] == true && response.data['data'] != null) {
         final tokenData = response.data['data'];
-        final tokenResponse = TokenResponse(
-          accessToken: tokenData['accessToken'],
-          refreshToken: tokenData['refreshToken'] ?? refreshToken,
-        );
+        final newAccessToken = tokenData['accessToken'];
+        final newRefreshToken = tokenData['refreshToken'] ?? refreshToken;
 
-        // Lưu access token mới vào memory
-        await tokenStorageService.saveAccessToken(tokenResponse.accessToken);
+        // Lưu tokens mới
+        await tokenStorageService.saveAccessToken(newAccessToken);
+        await tokenStorageService.saveRefreshToken(newRefreshToken);
 
-        // Cập nhật token trong thông tin người dùng
+        // Lấy và cập nhật thông tin người dùng với token mới
         final userJson = sharedPreferences.getString('user_info');
         if (userJson != null) {
           final userMap = json.decode(userJson) as Map<String, dynamic>;
-          userMap['authToken'] = tokenResponse.accessToken;
+          userMap['authToken'] = newAccessToken;
+          userMap['refreshToken'] = newRefreshToken;
           await sharedPreferences.setString('user_info', json.encode(userMap));
+          
+          // Return updated user
+          final userModel = UserModel.fromJson(userMap);
+          return userModel.toEntity();
         }
-
-        return tokenResponse;
+        
+        throw ServerException(message: 'Không tìm thấy thông tin người dùng');
       } else {
         throw ServerException(
           message: response.data['message'] ?? 'Làm mới token thất bại',
@@ -251,7 +257,8 @@ class AuthDataSourceImpl implements AuthDataSource {
       }
 
       final userMap = json.decode(userJson);
-      return User.fromJson(userMap);
+      final userModel = UserModel.fromJson(userMap);
+      return userModel.toEntity();
     } catch (e) {
       throw CacheException(
         message: 'Lấy thông tin người dùng thất bại: ${e.toString()}',
@@ -264,26 +271,24 @@ class AuthDataSourceImpl implements AuthDataSource {
     try {
       // Access token đã được lưu trong TokenStorageService khi login
       // Chỉ cần lưu thông tin user vào SharedPreferences
-      final userMap = {
-        'id': user.id,
-        'username': user.username,
-        'fullName': user.fullName,
-        'email': user.email,
-        'phoneNumber': user.phoneNumber,
-        'gender': user.gender,
-        'dateOfBirth': user.dateOfBirth,
-        'imageUrl': user.imageUrl,
-        'status': user.status,
-        'role': {
-          'id': user.role.id,
-          'roleName': user.role.roleName,
-          'description': user.role.description,
-          'isActive': user.role.isActive,
-        },
-        'authToken': user.authToken,
-      };
+      
+      // Convert User entity to UserModel for serialization
+      final userModel = UserModel(
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        gender: user.gender,
+        dateOfBirth: user.dateOfBirth,
+        imageUrl: user.imageUrl,
+        status: user.status,
+        role: user.role,
+        authToken: user.authToken,
+        refreshToken: user.refreshToken,
+      );
 
-      await sharedPreferences.setString('user_info', json.encode(userMap));
+      await sharedPreferences.setString('user_info', json.encode(userModel.toJson()));
     } catch (e) {
       throw CacheException(
         message: 'Lưu thông tin người dùng thất bại: ${e.toString()}',

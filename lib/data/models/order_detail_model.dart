@@ -14,7 +14,7 @@ class OrderDetailModel extends OrderDetail {
     required super.createdAt,
     required super.trackingCode,
     OrderSizeModel? super.orderSize,
-    VehicleAssignmentModel? super.vehicleAssignment,
+    super.vehicleAssignmentId,
   });
 
   factory OrderDetailModel.fromJson(Map<String, dynamic> json) {
@@ -41,9 +41,7 @@ class OrderDetailModel extends OrderDetail {
       orderSize: json['orderSize'] != null
           ? OrderSizeModel.fromJson(json['orderSize'])
           : null,
-      vehicleAssignment: json['vehicleAssignment'] != null
-          ? VehicleAssignmentModel.fromJson(json['vehicleAssignment'])
-          : null,
+      vehicleAssignmentId: json['vehicleAssignmentId'] as String?,
     );
   }
 
@@ -63,9 +61,7 @@ class OrderDetailModel extends OrderDetail {
       'orderSize': orderSize != null
           ? (orderSize as OrderSizeModel).toJson()
           : null,
-      'vehicleAssignment': vehicleAssignment != null
-          ? (vehicleAssignment as VehicleAssignmentModel).toJson()
-          : null,
+      'vehicleAssignmentId': vehicleAssignmentId,
     };
   }
 }

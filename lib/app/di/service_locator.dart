@@ -13,11 +13,15 @@ import '../../data/repositories/driver_repository_impl.dart';
 import '../../data/repositories/loading_documentation_repository_impl.dart';
 import '../../data/repositories/order_repository_impl.dart';
 import '../../data/repositories/vehicle_repository_impl.dart';
+import '../../data/repositories/photo_completion_repository_impl.dart';
+import '../../data/repositories/vehicle_fuel_consumption_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/repositories/driver_repository.dart';
 import '../../domain/repositories/loading_documentation_repository.dart';
 import '../../domain/repositories/order_repository.dart';
 import '../../domain/repositories/vehicle_repository.dart';
+import '../../domain/repositories/photo_completion_repository.dart';
+import '../../domain/repositories/vehicle_fuel_consumption_repository.dart';
 import '../../domain/usecases/auth/change_password_usecase.dart';
 import '../../domain/usecases/auth/get_driver_info_usecase.dart';
 import '../../domain/usecases/auth/login_usecase.dart';
@@ -27,6 +31,9 @@ import '../../domain/usecases/auth/update_driver_info_usecase.dart';
 import '../../domain/usecases/orders/get_driver_orders_usecase.dart';
 import '../../domain/usecases/orders/get_order_details_usecase.dart';
 import '../../domain/usecases/orders/upload_seal_image_usecase.dart';
+import '../../domain/usecases/orders/update_order_to_ongoing_delivered_usecase.dart';
+import '../../domain/usecases/orders/update_order_to_delivered_usecase.dart';
+import '../../domain/usecases/orders/update_order_to_successful_usecase.dart';
 import '../../domain/usecases/vehicle/create_vehicle_fuel_consumption_usecase.dart';
 import '../../presentation/features/account/viewmodels/account_viewmodel.dart';
 import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
@@ -34,15 +41,15 @@ import '../../presentation/features/delivery/viewmodels/navigation_viewmodel.dar
 import '../../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/order_list_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/pre_delivery_documentation_viewmodel.dart';
-import '../constants/api_constants.dart';
-import '../services/vehicle_websocket_service.dart';
-import '../services/mock_vehicle_websocket_service.dart';
-import '../services/enhanced_location_tracking_service.dart';
-import '../services/location_queue_service.dart';
-import '../services/token_storage_service.dart';
-import '../services/vietmap_service.dart';
-import '../services/global_location_manager.dart';
-import '../services/navigation_state_service.dart';
+import '../../core/constants/api_constants.dart';
+import '../../core/services/vehicle_websocket_service.dart';
+import '../../core/services/mock_vehicle_websocket_service.dart';
+import '../../core/services/enhanced_location_tracking_service.dart';
+import '../../core/services/location_queue_service.dart';
+import '../../core/services/token_storage_service.dart';
+import '../../core/services/vietmap_service.dart';
+import '../../core/services/global_location_manager.dart';
+import '../../core/services/navigation_state_service.dart';
 
 final GetIt getIt = GetIt.instance;
 
@@ -97,16 +104,22 @@ Future<void> setupServiceLocator() async {
     ),
   );
 
-  // NOTE: Recovery and background services removed as part of architecture simplification
-  // GlobalLocationManager now handles all location tracking directly
-
-  // Register Global Location Manager (singleton)
-  getIt.registerSingleton<GlobalLocationManager>(GlobalLocationManager.instance);
-
   // Navigation state service for persistence
   getIt.registerLazySingleton<NavigationStateService>(
     () => NavigationStateService(getIt<SharedPreferences>()),
   );
+
+  // NOTE: Recovery and background services removed as part of architecture simplification
+  // GlobalLocationManager now handles all location tracking directly
+
+  // Initialize Global Location Manager (must be after dependencies)
+  GlobalLocationManager.initialize(
+    getIt<EnhancedLocationTrackingService>(),
+    getIt<NavigationStateService>(),
+  );
+
+  // Register Global Location Manager instance
+  getIt.registerSingleton<GlobalLocationManager>(GlobalLocationManager.instance);
 
   // Data sources
   getIt.registerLazySingleton<AuthDataSourceImpl>(
@@ -147,11 +160,22 @@ Future<void> setupServiceLocator() async {
   );
 
   getIt.registerLazySingleton<OrderRepository>(
-    () => OrderRepositoryImpl(apiClient: getIt<ApiClient>()),
+    () => OrderRepositoryImpl(
+      apiClient: getIt<ApiClient>(),
+      orderDataSource: getIt<OrderDataSource>(),
+    ),
   );
 
   getIt.registerLazySingleton<VehicleRepository>(
     () => VehicleRepositoryImpl(apiClient: getIt<ApiClient>()),
+  );
+
+  getIt.registerLazySingleton<PhotoCompletionRepository>(
+    () => PhotoCompletionRepositoryImpl(dataSource: getIt<PhotoCompletionDataSource>()),
+  );
+
+  getIt.registerLazySingleton<VehicleFuelConsumptionRepository>(
+    () => VehicleFuelConsumptionRepositoryImpl(dataSource: getIt<VehicleFuelConsumptionDataSource>()),
   );
 
   // Use cases
@@ -197,6 +221,18 @@ Future<void> setupServiceLocator() async {
     () => CreateVehicleFuelConsumptionUseCase(getIt<VehicleRepository>()),
   );
 
+  getIt.registerLazySingleton<UpdateOrderToOngoingDeliveredUseCase>(
+    () => UpdateOrderToOngoingDeliveredUseCase(getIt<OrderRepository>()),
+  );
+
+  getIt.registerLazySingleton<UpdateOrderToDeliveredUseCase>(
+    () => UpdateOrderToDeliveredUseCase(getIt<OrderRepository>()),
+  );
+
+  getIt.registerLazySingleton<UpdateOrderToSuccessfulUseCase>(
+    () => UpdateOrderToSuccessfulUseCase(getIt<OrderRepository>()),
+  );
+
   // View models
   getIt.registerFactory<AuthViewModel>(
     () => AuthViewModel(
@@ -226,8 +262,9 @@ Future<void> setupServiceLocator() async {
   getIt.registerFactory<OrderDetailViewModel>(
     () => OrderDetailViewModel(
       getOrderDetailsUseCase: getIt<GetOrderDetailsUseCase>(),
-      createVehicleFuelConsumptionUseCase:
-          getIt<CreateVehicleFuelConsumptionUseCase>(),
+      createVehicleFuelConsumptionUseCase: getIt<CreateVehicleFuelConsumptionUseCase>(),
+      photoCompletionRepository: getIt<PhotoCompletionRepository>(),
+      fuelConsumptionRepository: getIt<VehicleFuelConsumptionRepository>(),
     ),
   );
 

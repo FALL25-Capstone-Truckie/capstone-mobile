@@ -3,9 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../errors/exceptions.dart';
-import 'service_locator.dart';
 import 'token_storage_service.dart';
-import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
+import '../../app/di/service_locator.dart';
 
 // Callback khi refresh token thất bại
 typedef OnTokenRefreshFailedCallback = void Function();
@@ -303,8 +302,10 @@ class ApiService {
 
           // Thông báo cho AuthViewModel về token mới
           try {
-            final authViewModel = getIt<AuthViewModel>();
-            await authViewModel.handleTokenRefreshed(newAccessToken);
+            final authViewModel = getIt.get(instanceName: 'AuthViewModel');
+            if (authViewModel != null && authViewModel is dynamic) {
+              await authViewModel.handleTokenRefreshed(newAccessToken);
+            }
             // debugPrint('AuthViewModel updated with new token');
           } catch (e) {
             // debugPrint('Error updating AuthViewModel: $e');

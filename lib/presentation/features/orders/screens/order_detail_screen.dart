@@ -4,9 +4,9 @@ import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../../app/app_routes.dart';
 import '../../../../core/services/global_location_manager.dart';
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
-import '../../../../core/utils/driver_role_checker.dart';
+import '../../../utils/driver_role_checker.dart';
 import '../../../../domain/entities/order_status.dart';
 import '../../../../domain/entities/order_with_details.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';

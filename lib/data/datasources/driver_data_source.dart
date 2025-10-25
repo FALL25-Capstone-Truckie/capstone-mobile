@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../../core/errors/exceptions.dart';
 import 'api_client.dart';
 import '../../domain/entities/driver.dart';
+import '../models/driver_model.dart';
 
 abstract class DriverDataSource {
   /// Get driver information for the current authenticated user
@@ -32,7 +33,8 @@ class DriverDataSourceImpl implements DriverDataSource {
       final response = await _apiClient.dio.get('/drivers/user');
 
       if (response.data['success'] == true && response.data['data'] != null) {
-        return Driver.fromJson(response.data['data']);
+        final driverModel = DriverModel.fromJson(response.data['data']);
+        return driverModel.toEntity();
       } else {
         throw ServerException(
           message: response.data['message'] ?? 'Không thể lấy thông tin tài xế',
@@ -54,7 +56,8 @@ class DriverDataSourceImpl implements DriverDataSource {
       final response = await _apiClient.dio.get('/drivers/user');
 
       if (response.data['success'] == true && response.data['data'] != null) {
-        return Driver.fromJson(response.data['data']);
+        final driverModel = DriverModel.fromJson(response.data['data']);
+        return driverModel.toEntity();
       } else {
         throw ServerException(
           message: response.data['message'] ?? 'Không thể lấy thông tin tài xế',
@@ -78,7 +81,8 @@ class DriverDataSourceImpl implements DriverDataSource {
       final response = await _apiClient.dio.put('/drivers/$driverId', data: driverInfo);
 
       if (response.data['success'] == true && response.data['data'] != null) {
-        return Driver.fromJson(response.data['data']);
+        final driverModel = DriverModel.fromJson(response.data['data']);
+        return driverModel.toEntity();
       } else {
         throw ServerException(
           message: response.data['message'] ?? 'Không thể cập nhật thông tin tài xế',

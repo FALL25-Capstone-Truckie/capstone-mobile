@@ -4,10 +4,13 @@ import 'dart:convert'; // Added for json.decode
 import 'package:flutter/foundation.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
-import '../../../../core/services/service_locator.dart';
-import '../../../../data/datasources/order_data_source.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../domain/entities/order_with_details.dart';
+import '../../../../domain/entities/order_detail.dart';
 import '../../../../domain/usecases/orders/get_order_details_usecase.dart';
+import '../../../../domain/usecases/orders/update_order_to_ongoing_delivered_usecase.dart';
+import '../../../../domain/usecases/orders/update_order_to_delivered_usecase.dart';
+import '../../../../domain/usecases/orders/update_order_to_successful_usecase.dart';
 
 class RouteSegment {
   final String name;
@@ -19,7 +22,12 @@ class RouteSegment {
 class NavigationViewModel extends ChangeNotifier {
   final GetOrderDetailsUseCase _getOrderDetailsUseCase =
       getIt<GetOrderDetailsUseCase>();
-  final OrderDataSource _orderDataSource = getIt<OrderDataSource>();
+  final UpdateOrderToOngoingDeliveredUseCase _updateToOngoingDeliveredUseCase =
+      getIt<UpdateOrderToOngoingDeliveredUseCase>();
+  final UpdateOrderToDeliveredUseCase _updateToDeliveredUseCase =
+      getIt<UpdateOrderToDeliveredUseCase>();
+  final UpdateOrderToSuccessfulUseCase _updateToSuccessfulUseCase =
+      getIt<UpdateOrderToSuccessfulUseCase>();
 
   OrderWithDetails? orderWithDetails;
   List<RouteSegment> routeSegments = [];
@@ -93,34 +101,51 @@ class NavigationViewModel extends ChangeNotifier {
       currentSegmentIndex = 0;
 
       // Extract vehicle ID and license plate number
-      if (order.orderDetails.isNotEmpty &&
-          order.orderDetails.first.vehicleAssignment != null &&
-          order.orderDetails.first.vehicleAssignment!.vehicle != null) {
-        _currentVehicleId =
-            order.orderDetails.first.vehicleAssignment!.vehicle!.id ?? '';
-        _currentLicensePlateNumber = order
-            .orderDetails
-            .first
-            .vehicleAssignment!
-            .vehicle!
-            .licensePlateNumber;
+      if (order.orderDetails.isNotEmpty && order.vehicleAssignments.isNotEmpty) {
+        final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+        if (vehicleAssignmentId != null) {
+          VehicleAssignment? vehicleAssignment;
+          try {
+            vehicleAssignment = order.vehicleAssignments.firstWhere(
+              (va) => va.id == vehicleAssignmentId,
+            );
+          } catch (e) {
+            vehicleAssignment = null;
+          }
+          if (vehicleAssignment?.vehicle != null) {
+            _currentVehicleId = vehicleAssignment!.vehicle!.id ?? '';
+            _currentLicensePlateNumber = vehicleAssignment.vehicle!.licensePlateNumber;
+          }
+        }
       }
 
       // Parse route data from order
-      if (order.orderDetails.isEmpty ||
-          order.orderDetails.first.vehicleAssignment == null ||
-          order
-              .orderDetails
-              .first
-              .vehicleAssignment!
-              .journeyHistories
-              .isEmpty) {
+      if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) {
+        debugPrint('❌ Không có dữ liệu order');
+        return;
+      }
+
+      final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+      if (vehicleAssignmentId == null) {
+        debugPrint('❌ Không có vehicleAssignmentId');
+        return;
+      }
+
+      VehicleAssignment? vehicleAssignment;
+      try {
+        vehicleAssignment = order.vehicleAssignments.firstWhere(
+          (va) => va.id == vehicleAssignmentId,
+        );
+      } catch (e) {
+        vehicleAssignment = null;
+      }
+
+      if (vehicleAssignment == null || vehicleAssignment.journeyHistories.isEmpty) {
         debugPrint('❌ Không có dữ liệu journeyHistories');
         return;
       }
 
-      final journeyHistory =
-          order.orderDetails.first.vehicleAssignment!.journeyHistories.first;
+      final journeyHistory = vehicleAssignment.journeyHistories.first;
       final segments = journeyHistory.journeySegments;
 
       if (segments.isEmpty) {
@@ -836,7 +861,7 @@ class NavigationViewModel extends ChangeNotifier {
     if (distanceKm <= _nearDeliveryThresholdKm) {
       debugPrint('🎯 Within 3km of delivery point! Updating order status...');
       
-      final result = await _orderDataSource.updateToOngoingDelivered(orderWithDetails!.id);
+      final result = await _updateToOngoingDeliveredUseCase(orderWithDetails!.id);
       result.fold(
         (failure) {
           debugPrint('❌ Failed to update order status: ${failure.message}');
@@ -860,7 +885,7 @@ class NavigationViewModel extends ChangeNotifier {
   Future<void> _updateOrderToDelivered() async {
     if (orderWithDetails == null) return;
     
-    final result = await _orderDataSource.updateToDelivered(orderWithDetails!.id);
+    final result = await _updateToDeliveredUseCase(orderWithDetails!.id);
     result.fold(
       (failure) {
         debugPrint('❌ Failed to update order status to DELIVERED: ${failure.message}');
@@ -880,7 +905,7 @@ class NavigationViewModel extends ChangeNotifier {
     // Step 1: Update to ONGOING_DELIVERED (if not already)
     if (!_hasNotifiedNearDelivery) {
       debugPrint('   - Step 1: Updating to ONGOING_DELIVERED...');
-      final result1 = await _orderDataSource.updateToOngoingDelivered(orderWithDetails!.id);
+      final result1 = await _updateToOngoingDeliveredUseCase(orderWithDetails!.id);
       result1.fold(
         (failure) => debugPrint('   - ❌ Failed: ${failure.message}'),
         (success) {
@@ -904,7 +929,7 @@ class NavigationViewModel extends ChangeNotifier {
     }
     
     debugPrint('🏁 Completing trip for order ${orderWithDetails!.id}...');
-    final result = await _orderDataSource.updateToSuccessful(orderWithDetails!.id);
+    final result = await _updateToSuccessfulUseCase(orderWithDetails!.id);
     
     return result.fold(
       (failure) {

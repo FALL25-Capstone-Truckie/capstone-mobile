@@ -30,42 +30,6 @@ class User extends Equatable {
     this.refreshToken,
   });
 
-  factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      id: json['id'] ?? '',
-      username: json['username'] ?? '',
-      fullName: json['fullName'] ?? '',
-      email: json['email'] ?? '',
-      phoneNumber: json['phoneNumber'] ?? '',
-      gender: json['gender'] ?? false,
-      dateOfBirth: json['dateOfBirth'] ?? '',
-      imageUrl: json['imageUrl'] ?? '',
-      status: json['status'] ?? '',
-      role: json['role'] != null
-          ? Role.fromJson(json['role'])
-          : Role(id: '', roleName: '', description: '', isActive: false),
-      authToken: json['authToken'] ?? '',
-      refreshToken: json['refreshToken'],
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'username': username,
-      'fullName': fullName,
-      'email': email,
-      'phoneNumber': phoneNumber,
-      'gender': gender,
-      'dateOfBirth': dateOfBirth,
-      'imageUrl': imageUrl,
-      'status': status,
-      'role': role.toJson(),
-      'authToken': authToken,
-      'refreshToken': refreshToken,
-    };
-  }
-
   @override
   List<Object?> get props => [
     id,

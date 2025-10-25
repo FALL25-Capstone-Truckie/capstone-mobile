@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../../../domain/entities/order_with_details.dart';
+import '../../../../domain/entities/order_detail.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../../app/app_routes.dart';
 import '../../../../core/services/global_location_manager.dart';
 import '../../../../core/services/navigation_state_service.dart';
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../viewmodels/navigation_viewmodel.dart';
@@ -159,6 +161,22 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   @override
+  VehicleAssignment? _getVehicleAssignmentFromOrderDetail(OrderWithDetails order) {
+    if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) {
+      return null;
+    }
+    final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
+      return null;
+    }
+    return order.vehicleAssignments
+        .cast<VehicleAssignment?>()
+        .firstWhere(
+          (va) => va?.id == vehicleAssignmentId,
+          orElse: () => null,
+        );
+  }
+
   void dispose() {
     // Clean up map resources to prevent buffer overflow
     try {
@@ -654,7 +672,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       if (_viewModel.orderWithDetails != null &&
           _viewModel.orderWithDetails!.orderDetails.isNotEmpty) {
         final vehicleAssignment =
-            _viewModel.orderWithDetails!.orderDetails.first.vehicleAssignment;
+            _getVehicleAssignmentFromOrderDetail(_viewModel.orderWithDetails!);
         if (vehicleAssignment != null) {
           final currentUserId = _authViewModel.driver?.id;
           final primaryDriverId = vehicleAssignment.primaryDriver?.id;

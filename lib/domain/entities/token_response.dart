@@ -6,13 +6,6 @@ class TokenResponse extends Equatable {
 
   const TokenResponse({required this.accessToken, this.refreshToken});
 
-  factory TokenResponse.fromJson(Map<String, dynamic> json) {
-    return TokenResponse(
-      accessToken: json['accessToken'] ?? '',
-      refreshToken: json['refreshToken'],
-    );
-  }
-
   @override
   List<Object?> get props => [accessToken, refreshToken];
 }

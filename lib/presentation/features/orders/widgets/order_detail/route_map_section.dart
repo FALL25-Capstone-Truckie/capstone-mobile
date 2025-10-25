@@ -153,34 +153,26 @@ class _RouteMapSectionState extends State<RouteMapSection>
   }
 
   bool _shouldShowRouteInfo() {
-    return widget.viewModel.routeSegments.isNotEmpty &&
-        widget.viewModel.orderWithDetails != null &&
-        widget.viewModel.orderWithDetails!.orderDetails.isNotEmpty &&
-        widget
-                .viewModel
-                .orderWithDetails!
-                .orderDetails
-                .first
-                .vehicleAssignment !=
-            null &&
-        widget
-            .viewModel
-            .orderWithDetails!
-            .orderDetails
-            .first
-            .vehicleAssignment!
-            .journeyHistories
-            .isNotEmpty &&
-        widget
-            .viewModel
-            .orderWithDetails!
-            .orderDetails
-            .first
-            .vehicleAssignment!
-            .journeyHistories
-            .first
-            .journeySegments
-            .isNotEmpty;
+    if (widget.viewModel.routeSegments.isEmpty ||
+        widget.viewModel.orderWithDetails == null ||
+        widget.viewModel.orderWithDetails!.orderDetails.isEmpty ||
+        widget.viewModel.orderWithDetails!.vehicleAssignments.isEmpty) {
+      return false;
+    }
+    
+    final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
+      return false;
+    }
+    
+    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
+      (va) => va.id == vehicleAssignmentId,
+      orElse: () => null,
+    );
+    
+    return vehicleAssignment != null &&
+        vehicleAssignment.journeyHistories.isNotEmpty &&
+        vehicleAssignment.journeyHistories.first.journeySegments.isNotEmpty;
   }
 
   Widget _buildRouteInfo() {
@@ -188,15 +180,17 @@ class _RouteMapSectionState extends State<RouteMapSection>
       return const SizedBox.shrink();
     }
 
-    final journeySegments = widget
-        .viewModel
-        .orderWithDetails!
-        .orderDetails
-        .first
-        .vehicleAssignment!
-        .journeyHistories
-        .first
-        .journeySegments;
+    final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
+    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
+      (va) => va.id == vehicleAssignmentId,
+      orElse: () => null,
+    );
+    
+    if (vehicleAssignment == null) {
+      return const SizedBox.shrink();
+    }
+
+    final journeySegments = vehicleAssignment.journeyHistories.first.journeySegments;
 
     // Tính tổng khoảng cách
     double totalDistanceKm = journeySegments.fold(
