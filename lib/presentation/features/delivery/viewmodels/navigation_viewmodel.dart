@@ -6,6 +6,7 @@ import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../../app/di/service_locator.dart';
 import '../../../../domain/entities/order_with_details.dart';
+import '../../../../domain/entities/order_detail.dart';
 import '../../../../domain/usecases/orders/get_order_details_usecase.dart';
 import '../../../../domain/usecases/orders/update_order_to_ongoing_delivered_usecase.dart';
 import '../../../../domain/usecases/orders/update_order_to_delivered_usecase.dart';
@@ -100,34 +101,51 @@ class NavigationViewModel extends ChangeNotifier {
       currentSegmentIndex = 0;
 
       // Extract vehicle ID and license plate number
-      if (order.orderDetails.isNotEmpty &&
-          order.orderDetails.first.vehicleAssignment != null &&
-          order.orderDetails.first.vehicleAssignment!.vehicle != null) {
-        _currentVehicleId =
-            order.orderDetails.first.vehicleAssignment!.vehicle!.id ?? '';
-        _currentLicensePlateNumber = order
-            .orderDetails
-            .first
-            .vehicleAssignment!
-            .vehicle!
-            .licensePlateNumber;
+      if (order.orderDetails.isNotEmpty && order.vehicleAssignments.isNotEmpty) {
+        final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+        if (vehicleAssignmentId != null) {
+          VehicleAssignment? vehicleAssignment;
+          try {
+            vehicleAssignment = order.vehicleAssignments.firstWhere(
+              (va) => va.id == vehicleAssignmentId,
+            );
+          } catch (e) {
+            vehicleAssignment = null;
+          }
+          if (vehicleAssignment?.vehicle != null) {
+            _currentVehicleId = vehicleAssignment!.vehicle!.id ?? '';
+            _currentLicensePlateNumber = vehicleAssignment.vehicle!.licensePlateNumber;
+          }
+        }
       }
 
       // Parse route data from order
-      if (order.orderDetails.isEmpty ||
-          order.orderDetails.first.vehicleAssignment == null ||
-          order
-              .orderDetails
-              .first
-              .vehicleAssignment!
-              .journeyHistories
-              .isEmpty) {
+      if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) {
+        debugPrint('❌ Không có dữ liệu order');
+        return;
+      }
+
+      final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+      if (vehicleAssignmentId == null) {
+        debugPrint('❌ Không có vehicleAssignmentId');
+        return;
+      }
+
+      VehicleAssignment? vehicleAssignment;
+      try {
+        vehicleAssignment = order.vehicleAssignments.firstWhere(
+          (va) => va.id == vehicleAssignmentId,
+        );
+      } catch (e) {
+        vehicleAssignment = null;
+      }
+
+      if (vehicleAssignment == null || vehicleAssignment.journeyHistories.isEmpty) {
         debugPrint('❌ Không có dữ liệu journeyHistories');
         return;
       }
 
-      final journeyHistory =
-          order.orderDetails.first.vehicleAssignment!.journeyHistories.first;
+      final journeyHistory = vehicleAssignment.journeyHistories.first;
       final segments = journeyHistory.journeySegments;
 
       if (segments.isEmpty) {

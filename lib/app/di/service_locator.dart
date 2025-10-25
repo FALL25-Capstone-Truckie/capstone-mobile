@@ -104,16 +104,22 @@ Future<void> setupServiceLocator() async {
     ),
   );
 
-  // NOTE: Recovery and background services removed as part of architecture simplification
-  // GlobalLocationManager now handles all location tracking directly
-
-  // Register Global Location Manager (singleton)
-  getIt.registerSingleton<GlobalLocationManager>(GlobalLocationManager.instance);
-
   // Navigation state service for persistence
   getIt.registerLazySingleton<NavigationStateService>(
     () => NavigationStateService(getIt<SharedPreferences>()),
   );
+
+  // NOTE: Recovery and background services removed as part of architecture simplification
+  // GlobalLocationManager now handles all location tracking directly
+
+  // Initialize Global Location Manager (must be after dependencies)
+  GlobalLocationManager.initialize(
+    getIt<EnhancedLocationTrackingService>(),
+    getIt<NavigationStateService>(),
+  );
+
+  // Register Global Location Manager instance
+  getIt.registerSingleton<GlobalLocationManager>(GlobalLocationManager.instance);
 
   // Data sources
   getIt.registerLazySingleton<AuthDataSourceImpl>(

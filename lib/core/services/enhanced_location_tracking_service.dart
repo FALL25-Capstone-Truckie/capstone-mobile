@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
-import 'service_locator.dart';
 import 'token_storage_service.dart';
 import 'vehicle_websocket_service.dart';
 import 'location_queue_service.dart';
@@ -54,10 +53,10 @@ class EnhancedLocationTrackingService {
   bool get isSimulationMode => _isSimulationMode; // Expose simulation mode flag
 
   EnhancedLocationTrackingService({
-    VehicleWebSocketService? webSocketService,
-    LocationQueueService? queueService,
-  }) : _webSocketService = webSocketService ?? getIt<VehicleWebSocketService>(),
-       _queueService = queueService ?? getIt<LocationQueueService>();
+    required VehicleWebSocketService webSocketService,
+    required LocationQueueService queueService,
+  }) : _webSocketService = webSocketService,
+       _queueService = queueService;
 
   /// Start enhanced location tracking
   Future<bool> startTracking({
@@ -71,12 +70,8 @@ class EnhancedLocationTrackingService {
     if (_isConnected) return true;
 
     try {
-      // Get token if not provided
+      // Token must be provided
       String? token = jwtToken;
-      if (token == null) {
-        final tokenService = getIt<TokenStorageService>();
-        token = tokenService.getAccessToken();
-      }
 
       if (token == null) {
         final errorMsg = 'Không thể kết nối: Không có token';

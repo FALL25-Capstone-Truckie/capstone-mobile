@@ -37,14 +37,18 @@ class _PreDeliveryDocumentationSectionState
   }
 
   List<OrderSeal> _getAvailableSeals() {
-    if (widget.order.orderDetails.isEmpty) {
+    if (widget.order.orderDetails.isEmpty || widget.order.vehicleAssignments.isEmpty) {
       return [];
     }
-    final orderDetail = widget.order.orderDetails.first;
-    if (orderDetail.vehicleAssignment == null) {
+    final vehicleAssignmentId = widget.order.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
       return [];
     }
-    return orderDetail.vehicleAssignment!.orderSeals;
+    final vehicleAssignment = widget.order.vehicleAssignments.cast<VehicleAssignment?>().firstWhere(
+      (va) => va?.id == vehicleAssignmentId,
+      orElse: () => null,
+    );
+    return vehicleAssignment?.orderSeals ?? [];
   }
 
   Future<void> _pickPackingProofImage(ImageSource source) async {
@@ -118,14 +122,18 @@ class _PreDeliveryDocumentationSectionState
   }
 
   String? _getVehicleAssignmentId() {
-    if (widget.order.orderDetails.isEmpty) {
+    if (widget.order.orderDetails.isEmpty || widget.order.vehicleAssignments.isEmpty) {
       return null;
     }
-    final orderDetail = widget.order.orderDetails.first;
-    if (orderDetail.vehicleAssignment == null) {
+    final vehicleAssignmentId = widget.order.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
       return null;
     }
-    return orderDetail.vehicleAssignment!.id;
+    final vehicleAssignment = widget.order.vehicleAssignments.cast<VehicleAssignment?>().firstWhere(
+      (va) => va?.id == vehicleAssignmentId,
+      orElse: () => null,
+    );
+    return vehicleAssignment?.id;
   }
 
   Future<void> _submitDocumentation() async {

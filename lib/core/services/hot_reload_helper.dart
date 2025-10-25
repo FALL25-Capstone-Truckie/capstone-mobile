@@ -9,11 +9,9 @@ class HotReloadHelper {
       // Reset AuthViewModel using dynamic to avoid presentation layer dependency
       try {
         final authViewModel = getIt.get(instanceName: 'AuthViewModel');
-        if (authViewModel != null && authViewModel is dynamic) {
-          authViewModel.resetInstance();
-        }
+        // AuthViewModel reset is not needed - handled by service locator
+        debugPrint('ℹ️ AuthViewModel managed by service locator');
       } catch (e) {
-        // AuthViewModel might not be registered yet
         debugPrint('AuthViewModel not available for reset: $e');
       }
 

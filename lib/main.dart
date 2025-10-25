@@ -35,14 +35,7 @@ void main() async {
   // Đặt navigatorKey cho AuthViewModel
   AuthViewModel.setNavigatorKey(navigatorKey);
 
-  // Đăng ký callback khi refresh token thất bại
-  ApiService.setTokenRefreshFailedCallback(() {
-    // Sử dụng GlobalKey<NavigatorState> để điều hướng mà không cần context
-    navigatorKey.currentState?.pushNamedAndRemoveUntil(
-      AppRoutes.login,
-      (route) => false,
-    );
-  });
+  // Token refresh callback is now handled in ApiClient via interceptor
 
   runApp(const MyApp());
 }

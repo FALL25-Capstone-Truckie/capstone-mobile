@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dartz/dartz.dart';
 
 import '../../core/errors/exceptions.dart';
@@ -30,5 +31,25 @@ class VehicleFuelConsumptionRepositoryImpl implements VehicleFuelConsumptionRepo
     } catch (e) {
       return Left(ServerFailure(message: e.toString()));
     }
+  }
+
+  @override
+  Future<Either<Failure, Map<String, dynamic>>> getByVehicleAssignmentId(
+    String vehicleAssignmentId,
+  ) async {
+    return await dataSource.getByVehicleAssignmentId(vehicleAssignmentId);
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateFinalReading({
+    required String fuelConsumptionId,
+    required double odometerReadingAtEnd,
+    required File odometerImage,
+  }) async {
+    return await dataSource.updateFinalReading(
+      fuelConsumptionId: fuelConsumptionId,
+      odometerReadingAtEnd: odometerReadingAtEnd,
+      odometerImage: odometerImage,
+    );
   }
 }

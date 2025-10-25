@@ -13,7 +13,7 @@ class OrderDetail extends Equatable {
   final DateTime createdAt;
   final String trackingCode;
   final OrderSize? orderSize;
-  final VehicleAssignment? vehicleAssignment;
+  final String? vehicleAssignmentId; // Changed from full object to ID reference
 
   const OrderDetail({
     required this.id,
@@ -28,7 +28,7 @@ class OrderDetail extends Equatable {
     required this.createdAt,
     required this.trackingCode,
     this.orderSize,
-    this.vehicleAssignment,
+    this.vehicleAssignmentId,
   });
 
   @override
@@ -45,7 +45,7 @@ class OrderDetail extends Equatable {
     createdAt,
     trackingCode,
     orderSize,
-    vehicleAssignment,
+    vehicleAssignmentId,
   ];
 }
 

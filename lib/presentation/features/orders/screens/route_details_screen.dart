@@ -366,15 +366,20 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
       return const SizedBox.shrink();
     }
 
-    final journeySegments = widget
-        .viewModel
-        .orderWithDetails!
-        .orderDetails
-        .first
-        .vehicleAssignment!
-        .journeyHistories
-        .first
-        .journeySegments;
+    final orderDetail = widget.viewModel.orderWithDetails!.orderDetails.first;
+    final vehicleAssignmentId = orderDetail.vehicleAssignmentId;
+    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments
+        .cast<VehicleAssignment?>()
+        .firstWhere(
+          (va) => va?.id == vehicleAssignmentId,
+          orElse: () => null,
+        );
+    
+    if (vehicleAssignment?.journeyHistories.isEmpty ?? true) {
+      return const SizedBox.shrink();
+    }
+    
+    final journeySegments = vehicleAssignment!.journeyHistories.first.journeySegments;
 
     // Get current segment
     final currentSegment = journeySegments[_selectedSegmentIndex];
@@ -480,34 +485,35 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
   }
 
   bool _shouldShowRouteInfo() {
-    return widget.viewModel.routeSegments.isNotEmpty &&
-        widget.viewModel.orderWithDetails != null &&
-        widget.viewModel.orderWithDetails!.orderDetails.isNotEmpty &&
-        widget
-                .viewModel
-                .orderWithDetails!
-                .orderDetails
-                .first
-                .vehicleAssignment !=
-            null &&
-        widget
-            .viewModel
-            .orderWithDetails!
-            .orderDetails
-            .first
-            .vehicleAssignment!
-            .journeyHistories
-            .isNotEmpty &&
-        widget
-            .viewModel
-            .orderWithDetails!
-            .orderDetails
-            .first
-            .vehicleAssignment!
-            .journeyHistories
-            .first
-            .journeySegments
-            .isNotEmpty;
+    if (widget.viewModel.routeSegments.isEmpty ||
+        widget.viewModel.orderWithDetails == null ||
+        widget.viewModel.orderWithDetails!.orderDetails.isEmpty ||
+        widget.viewModel.orderWithDetails!.vehicleAssignments.isEmpty) {
+      return false;
+    }
+    
+    final vehicleAssignment = _getVehicleAssignmentForFirstOrderDetail();
+    if (vehicleAssignment == null || vehicleAssignment.journeyHistories.isEmpty) {
+      return false;
+    }
+    
+    return vehicleAssignment.journeyHistories.first.journeySegments.isNotEmpty;
+  }
+
+  VehicleAssignment? _getVehicleAssignmentForFirstOrderDetail() {
+    if (widget.viewModel.orderWithDetails?.orderDetails.isEmpty ?? true) {
+      return null;
+    }
+    final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
+      return null;
+    }
+    return widget.viewModel.orderWithDetails!.vehicleAssignments
+        .cast<VehicleAssignment?>()
+        .firstWhere(
+          (va) => va?.id == vehicleAssignmentId,
+          orElse: () => null,
+        );
   }
 
   String _getMapStyleString() {

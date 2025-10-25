@@ -31,7 +31,7 @@ abstract class AuthDataSource {
   Future<void> clearUserInfo();
 
   /// Refresh token
-  Future<TokenResponse> refreshToken();
+  Future<User> refreshToken();
 
   /// Đổi mật khẩu
   Future<bool> changePassword(
@@ -108,7 +108,7 @@ class AuthDataSourceImpl implements AuthDataSource {
   }
 
   @override
-  Future<TokenResponse> refreshToken() async {
+  Future<User> refreshToken() async {
     try {
       // debugPrint('Attempting to refresh token');
 
@@ -130,23 +130,27 @@ class AuthDataSourceImpl implements AuthDataSource {
 
       if (response.data['success'] == true && response.data['data'] != null) {
         final tokenData = response.data['data'];
-        final tokenResponse = TokenResponse(
-          accessToken: tokenData['accessToken'],
-          refreshToken: tokenData['refreshToken'] ?? refreshToken,
-        );
+        final newAccessToken = tokenData['accessToken'];
+        final newRefreshToken = tokenData['refreshToken'] ?? refreshToken;
 
-        // Lưu access token mới vào memory
-        await tokenStorageService.saveAccessToken(tokenResponse.accessToken);
+        // Lưu tokens mới
+        await tokenStorageService.saveAccessToken(newAccessToken);
+        await tokenStorageService.saveRefreshToken(newRefreshToken);
 
-        // Cập nhật token trong thông tin người dùng
+        // Lấy và cập nhật thông tin người dùng với token mới
         final userJson = sharedPreferences.getString('user_info');
         if (userJson != null) {
           final userMap = json.decode(userJson) as Map<String, dynamic>;
-          userMap['authToken'] = tokenResponse.accessToken;
+          userMap['authToken'] = newAccessToken;
+          userMap['refreshToken'] = newRefreshToken;
           await sharedPreferences.setString('user_info', json.encode(userMap));
+          
+          // Return updated user
+          final userModel = UserModel.fromJson(userMap);
+          return userModel.toEntity();
         }
-
-        return tokenResponse;
+        
+        throw ServerException(message: 'Không tìm thấy thông tin người dùng');
       } else {
         throw ServerException(
           message: response.data['message'] ?? 'Làm mới token thất bại',

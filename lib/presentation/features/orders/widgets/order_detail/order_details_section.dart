@@ -19,11 +19,21 @@ class OrderDetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (order.orderDetails.isEmpty) {
+    if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final vehicleAssignment = order.orderDetails.first.vehicleAssignment;
+    // Get vehicleAssignmentId from first orderDetail
+    final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Find matching vehicleAssignment from order level
+    final vehicleAssignment = order.vehicleAssignments.cast<VehicleAssignment?>().firstWhere(
+      (va) => va?.id == vehicleAssignmentId,
+      orElse: () => null,
+    );
     
     if (vehicleAssignment == null) {
       return Card(

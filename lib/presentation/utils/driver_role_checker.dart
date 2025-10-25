@@ -6,9 +6,17 @@ import '../features/auth/viewmodels/auth_viewmodel.dart';
 class DriverRoleChecker {
   /// Kiểm tra xem user hiện tại có phải là primary driver của order không
   static bool isPrimaryDriver(OrderWithDetails order, AuthViewModel authViewModel) {
-    if (order.orderDetails.isEmpty) return false;
+    if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) return false;
     
-    final vehicleAssignment = order.orderDetails.first.vehicleAssignment;
+    final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) return false;
+    
+    final vehicleAssignment = order.vehicleAssignments
+        .cast<dynamic>()
+        .firstWhere(
+          (va) => va?.id == vehicleAssignmentId,
+          orElse: () => null,
+        );
     if (vehicleAssignment == null) return false;
     
     final currentUserId = authViewModel.driver?.id;
@@ -19,9 +27,17 @@ class DriverRoleChecker {
   
   /// Kiểm tra xem user hiện tại có phải là secondary driver của order không
   static bool isSecondaryDriver(OrderWithDetails order, AuthViewModel authViewModel) {
-    if (order.orderDetails.isEmpty) return false;
+    if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) return false;
     
-    final vehicleAssignment = order.orderDetails.first.vehicleAssignment;
+    final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) return false;
+    
+    final vehicleAssignment = order.vehicleAssignments
+        .cast<dynamic>()
+        .firstWhere(
+          (va) => va?.id == vehicleAssignmentId,
+          orElse: () => null,
+        );
     if (vehicleAssignment == null) return false;
     
     final currentUserId = authViewModel.driver?.id;
