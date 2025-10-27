@@ -45,7 +45,7 @@ enum OrderStatus {
       case OrderStatus.assignedToDriver:
         return 'Đã phân công tài xế';
       case OrderStatus.fullyPaid:
-        return 'Đã thanh toán đủ';
+        return 'Chờ lấy hàng';
       case OrderStatus.pickingUp:
         return 'Đang lấy hàng';
       case OrderStatus.onDelivered:

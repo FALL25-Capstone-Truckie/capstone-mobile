@@ -5,6 +5,8 @@ import '../../account/screens/account_screen.dart';
 import '../../auth/viewmodels/auth_viewmodel.dart';
 import '../../home/screens/home_screen.dart';
 import '../../orders/screens/orders_screen.dart';
+import '../../orders/viewmodels/order_list_viewmodel.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../theme/app_colors.dart';
 
 class MainScreen extends StatefulWidget {
@@ -40,20 +42,34 @@ class _MainScreenState extends State<MainScreen> {
       _selectedIndex = index;
     });
 
-    // Nếu chuyển sang tab mới, đảm bảo token đã được refresh
+    // Nếu chuyển sang tab mới, fetch lại dữ liệu của tab đó
     if (oldIndex != index) {
       final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
 
-      // Thử refresh token trước khi hiển thị tab mới
       if (authViewModel.status == AuthStatus.authenticated) {
-        // Chỉ refresh token nếu đang ở tab tài khoản hoặc trang chủ
-        if (index == 0 || index == 2) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            authViewModel.forceRefreshToken().then((success) {
-              debugPrint('Force refresh token result: $success');
-            });
-          });
-        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          switch (index) {
+            case 0:
+              // Tab Trang chủ - refresh token và driver info
+              authViewModel.forceRefreshToken().then((success) {
+                debugPrint('🔄 Tab Trang chủ: Force refresh token result: $success');
+              });
+              authViewModel.refreshDriverInfo();
+              break;
+            case 1:
+              // Tab Đơn hàng - fetch lại danh sách đơn hàng
+              final orderListViewModel = getIt<OrderListViewModel>();
+              orderListViewModel.getDriverOrders();
+              debugPrint('🔄 Tab Đơn hàng: Fetch lại danh sách đơn hàng');
+              break;
+            case 2:
+              // Tab Tài khoản - refresh token
+              authViewModel.forceRefreshToken().then((success) {
+                debugPrint('🔄 Tab Tài khoản: Force refresh token result: $success');
+              });
+              break;
+          }
+        });
       }
     }
   }

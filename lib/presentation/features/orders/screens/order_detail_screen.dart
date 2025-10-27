@@ -256,6 +256,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               OrderDetailsSection(order: orderWithDetails),
               SizedBox(height: 16),
 
+              // Journey info section (khoảng cách, phí cầu đường, v.v.)
+              if (orderWithDetails.vehicleAssignments.isNotEmpty)
+                JourneyInfoSection(
+                  journeyHistories: orderWithDetails.vehicleAssignments.first.journeyHistories,
+                ),
+              if (orderWithDetails.vehicleAssignments.isNotEmpty)
+                SizedBox(height: 16),
+
+              // Seal info section
+              if (orderWithDetails.vehicleAssignments.isNotEmpty &&
+                  orderWithDetails.vehicleAssignments.first.orderSeals.isNotEmpty)
+                SealInfoSection(
+                  seals: orderWithDetails.vehicleAssignments.first.orderSeals,
+                ),
+              if (orderWithDetails.vehicleAssignments.isNotEmpty &&
+                  orderWithDetails.vehicleAssignments.first.orderSeals.isNotEmpty)
+                SizedBox(height: 16),
+
               // Final odometer upload section (when order is DELIVERED)
               if (canUploadFinalOdometer)
                 FinalOdometerSection(order: orderWithDetails),
@@ -269,22 +287,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         // Always show if has route data, but behavior changes based on WebSocket status
         if (hasRouteData)
           Positioned(
-            bottom: (canStartDelivery || canConfirmPreDelivery || canConfirmDelivery || canUploadFinalOdometer) ? 100 : 16,
+            bottom: (canStartDelivery || canConfirmPreDelivery || canConfirmDelivery || canUploadFinalOdometer) ? 120 : 16,
             right: 16,
             child: Builder(
               builder: (context) {
                 // Use GlobalLocationManager to check if tracking is active for this order
                 final isConnected = _globalLocationManager.isTrackingOrder(orderWithDetails.id);
-                debugPrint('🔍 FAB - Global tracking active for order ${orderWithDetails.id}: $isConnected');
 
                 return FloatingActionButton.extended(
                   onPressed: () {
                     if (isConnected) {
                       // Return to navigation screen (already has active connection)
                       // Pop current screen first, then navigate to navigation
-                      debugPrint('🚀 Navigating to NavigationScreen:');
-                      debugPrint('   - Order ID: ${orderWithDetails.id}');
-                      debugPrint('   - isSimulationMode from GlobalLocationManager: ${_globalLocationManager.isSimulationMode}');
                       
                       Navigator.of(context).pop(); // Pop OrderDetailScreen
                       

@@ -44,12 +44,20 @@ class VehicleSection extends StatelessWidget {
 
     return Consumer<AuthViewModel>(
       builder: (context, authViewModel, _) {
-        // Kiểm tra xem người dùng hiện tại có phải là tài xế của đơn hàng này không
-        final currentUserId = authViewModel.driver?.id;
+        // Use phone number for reliable matching (ID có thể khác giữa auth và order response)
+        final currentUserPhone = authViewModel.driver?.userResponse.phoneNumber;
         final isPrimaryDriver =
-            primaryDriver != null && primaryDriver.id == currentUserId;
+            primaryDriver != null && 
+            currentUserPhone != null &&
+            currentUserPhone.isNotEmpty &&
+            primaryDriver.phoneNumber.isNotEmpty &&
+            currentUserPhone.trim() == primaryDriver.phoneNumber.trim();
         final isSecondaryDriver =
-            secondaryDriver != null && secondaryDriver.id == currentUserId;
+            secondaryDriver != null && 
+            currentUserPhone != null &&
+            currentUserPhone.isNotEmpty &&
+            secondaryDriver.phoneNumber.isNotEmpty &&
+            currentUserPhone.trim() == secondaryDriver.phoneNumber.trim();
 
         return Card(
           elevation: 2,

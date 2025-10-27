@@ -12,6 +12,7 @@ import '../../../../core/services/navigation_state_service.dart';
 import '../../../../app/di/service_locator.dart';
 import '../../../../presentation/theme/app_colors.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
+import '../../../../presentation/utils/driver_role_checker.dart';
 import '../viewmodels/navigation_viewmodel.dart';
 
 class NavigationScreen extends StatefulWidget {
@@ -667,31 +668,25 @@ class _NavigationScreenState extends State<NavigationScreen> {
         }
       }
 
-      // Xác định driver role từ order details
+      // Xác định driver role từ order details (dùng DriverRoleChecker như ở order detail screen)
       bool isPrimaryDriver = true; // Default
-      if (_viewModel.orderWithDetails != null &&
-          _viewModel.orderWithDetails!.orderDetails.isNotEmpty) {
-        final vehicleAssignment =
-            _getVehicleAssignmentFromOrderDetail(_viewModel.orderWithDetails!);
-        if (vehicleAssignment != null) {
-          final currentUserId = _authViewModel.driver?.id;
-          final primaryDriverId = vehicleAssignment.primaryDriver?.id;
-          final secondaryDriverId = vehicleAssignment.secondaryDriver?.id;
-
-          isPrimaryDriver = (currentUserId == primaryDriverId);
-
-          debugPrint('   - Current User ID: $currentUserId');
-          debugPrint('   - Primary Driver ID: $primaryDriverId');
-          debugPrint('   - Secondary Driver ID: $secondaryDriverId');
-          debugPrint('   - Is Primary Driver: $isPrimaryDriver');
-        }
+      if (_viewModel.orderWithDetails != null) {
+        // Use DriverRoleChecker để đồng nhất logic với order detail screen
+        isPrimaryDriver = DriverRoleChecker.canPerformActions(
+          _viewModel.orderWithDetails!,
+          _authViewModel,
+        );
       }
 
       // Use GlobalLocationManager instead of direct IntegratedLocationService
+      // Get JWT token from auth view model
+      final jwtToken = _authViewModel.user?.authToken;
+      
       final success = await _globalLocationManager.startGlobalTracking(
         orderId: widget.orderId,
         vehicleId: _viewModel.currentVehicleId,
         licensePlateNumber: _viewModel.currentLicensePlateNumber,
+        jwtToken: jwtToken,
         initiatingScreen: 'NavigationScreen',
         isPrimaryDriver: isPrimaryDriver,
         isSimulationMode:

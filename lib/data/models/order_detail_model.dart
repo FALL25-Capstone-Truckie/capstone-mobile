@@ -118,6 +118,9 @@ class VehicleAssignmentModel extends VehicleAssignment {
   });
 
   factory VehicleAssignmentModel.fromJson(Map<String, dynamic> json) {
+    // Handle both 'seals' (new format) and 'orderSeals' (old format)
+    final sealsJson = json['seals'] ?? json['orderSeals'] ?? [];
+    
     return VehicleAssignmentModel(
       id: json['id'] ?? '',
       vehicle: json['vehicle'] != null
@@ -137,7 +140,7 @@ class VehicleAssignmentModel extends VehicleAssignment {
               .toList() ??
           [],
       orderSeals:
-          (json['orderSeals'] as List<dynamic>?)
+          (sealsJson as List<dynamic>?)
               ?.map((e) => OrderSealModel.fromJson(e))
               .toList() ??
           [],
@@ -223,6 +226,8 @@ class JourneyHistoryModel extends JourneyHistory {
     required super.journeyType,
     required super.status,
     required super.totalTollFee,
+    super.totalTollCount,
+    super.totalDistance,
     super.reasonForReroute,
     required super.vehicleAssignmentId,
     required List<JourneySegmentModel> super.journeySegments,
@@ -231,12 +236,25 @@ class JourneyHistoryModel extends JourneyHistory {
   });
 
   factory JourneyHistoryModel.fromJson(Map<String, dynamic> json) {
+    // Handle totalDistance which can be int or double
+    int? totalDistance;
+    if (json['totalDistance'] != null) {
+      final distance = json['totalDistance'];
+      if (distance is int) {
+        totalDistance = distance;
+      } else if (distance is double) {
+        totalDistance = distance.toInt();
+      }
+    }
+
     return JourneyHistoryModel(
       id: json['id'] ?? '',
       journeyName: json['journeyName'] ?? '',
       journeyType: json['journeyType'] ?? '',
       status: json['status'] ?? '',
       totalTollFee: json['totalTollFee']?.toDouble() ?? 0.0,
+      totalTollCount: json['totalTollCount'] as int?,
+      totalDistance: totalDistance,
       reasonForReroute: json['reasonForReroute'],
       vehicleAssignmentId: json['vehicleAssignmentId'] ?? '',
       journeySegments:
@@ -260,6 +278,8 @@ class JourneyHistoryModel extends JourneyHistory {
       'journeyType': journeyType,
       'status': status,
       'totalTollFee': totalTollFee,
+      'totalTollCount': totalTollCount,
+      'totalDistance': totalDistance,
       'reasonForReroute': reasonForReroute,
       'vehicleAssignmentId': vehicleAssignmentId,
       'journeySegments': journeySegments

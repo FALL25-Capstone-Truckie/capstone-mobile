@@ -164,8 +164,43 @@ class OrderDetailViewModel extends BaseViewModel {
 
   /// Kiểm tra xem đơn hàng có thể bắt đầu giao hàng không
   bool canStartDelivery() {
-    if (_orderWithDetails == null) return false;
-    return _orderWithDetails!.status == 'FULLY_PAID';
+    if (_orderWithDetails == null) {
+      debugPrint('❌ canStartDelivery: orderWithDetails is null');
+      return false;
+    }
+    
+    // Status must be FULLY_PAID
+    if (_orderWithDetails!.status != 'FULLY_PAID') {
+      debugPrint('❌ canStartDelivery: status is ${_orderWithDetails!.status}, not FULLY_PAID');
+      return false;
+    }
+    
+    // Must have vehicle assignments
+    if (_orderWithDetails!.vehicleAssignments.isEmpty) {
+      debugPrint('❌ canStartDelivery: no vehicle assignments');
+      return false;
+    }
+    
+    // Must have order details with vehicle assignment ID
+    if (_orderWithDetails!.orderDetails.isEmpty) {
+      debugPrint('❌ canStartDelivery: no order details');
+      return false;
+    }
+    
+    final vehicleAssignmentId = _orderWithDetails!.orderDetails.first.vehicleAssignmentId;
+    if (vehicleAssignmentId == null) {
+      return false;
+    }
+    
+    // Vehicle assignment must exist
+    try {
+      _orderWithDetails!.vehicleAssignments.firstWhere(
+        (va) => va.id == vehicleAssignmentId,
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Kiểm tra xem đơn hàng có thể xác nhận đóng gói và seal không

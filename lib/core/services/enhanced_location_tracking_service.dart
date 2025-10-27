@@ -112,6 +112,14 @@ class EnhancedLocationTrackingService {
         _stats.connectionTime = DateTime.now();
         _updateStats();
 
+        // CRITICAL: Send initial location immediately after connecting
+        // This ensures database has GPS data before any broadcasts
+        if (!isSimulationMode) {
+          // For real GPS mode, get and send current location
+          await _sendInitialLocation();
+        }
+        // For simulation mode, initial location will be sent when simulation starts
+
         // Process any queued locations
         await _processQueuedLocations();
 
@@ -171,6 +179,64 @@ class EnhancedLocationTrackingService {
     });
 
     return await connectionCompleter.future;
+  }
+
+  /// Get and send current location immediately after connecting
+  /// This ensures database has GPS data before any broadcasts
+  Future<void> _sendInitialLocation() async {
+    if (!_isConnected || _vehicleId == null) {
+      return;
+    }
+
+    try {
+      debugPrint('📍 Getting initial location...');
+      
+      // Check location permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || 
+          permission == LocationPermission.deniedForever) {
+        debugPrint('❌ Location permission denied - cannot send initial location');
+        return;
+      }
+
+      // Get current position with timeout
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('⏱️ Initial location timeout - will send when GPS ready');
+          throw Exception('Getting initial location timed out');
+        },
+      );
+
+      // Validate position
+      if (position.latitude == 0 && position.longitude == 0) {
+        debugPrint('❌ Invalid initial position (0,0) - skipping');
+        return;
+      }
+
+      // Check for California GPS (emulator default)
+      final isCaliforniaGPS = (position.latitude >= 32.0 && position.latitude <= 42.0) && 
+                             (position.longitude >= -125.0 && position.longitude <= -114.0);
+      
+      if (isCaliforniaGPS && _isSimulationMode) {
+        debugPrint('⚠️ California GPS detected in simulation mode - waiting for simulation location');
+        return;
+      }
+
+      debugPrint('✅ Got initial location: ${position.latitude}, ${position.longitude}');
+      
+      // Send initial location
+      // Use isManualUpdate=false for real GPS, true for simulation
+      await sendPosition(position, isManualUpdate: false);
+      
+      debugPrint('📤 Initial location sent successfully');
+    } catch (e) {
+      debugPrint('⚠️ Could not get initial location: $e');
+      // Don't fail - location will be sent when GPS updates arrive
+    }
   }
 
   /// Enhanced location sending with throttling and validation

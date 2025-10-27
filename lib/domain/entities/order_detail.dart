@@ -163,6 +163,8 @@ class JourneyHistory extends Equatable {
   final String journeyType;
   final String status;
   final double totalTollFee;
+  final int? totalTollCount;
+  final int? totalDistance;
   final String? reasonForReroute;
   final String vehicleAssignmentId;
   final List<JourneySegment> journeySegments;
@@ -175,6 +177,8 @@ class JourneyHistory extends Equatable {
     required this.journeyType,
     required this.status,
     required this.totalTollFee,
+    this.totalTollCount,
+    this.totalDistance,
     this.reasonForReroute,
     required this.vehicleAssignmentId,
     required this.journeySegments,
@@ -189,6 +193,8 @@ class JourneyHistory extends Equatable {
     journeyType,
     status,
     totalTollFee,
+    totalTollCount,
+    totalDistance,
     reasonForReroute,
     vehicleAssignmentId,
     journeySegments,

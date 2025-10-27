@@ -190,10 +190,6 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       _isLoading = true;
     });
 
-    debugPrint('🚀 Bắt đầu gửi thông tin công tơ mét...');
-    debugPrint('🚀 Chỉ số công tơ mét: ${_odometerController.text}');
-    debugPrint('🚀 Đường dẫn ảnh: ${_odometerImage!.path}');
-
     try {
       final viewModel = Provider.of<OrderDetailViewModel>(
         context,
@@ -204,15 +200,12 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         odometerImage: _odometerImage!,
       );
 
-      debugPrint('🚀 Kết quả gửi thông tin: $success');
-
       if (success) {
         // Lưu lại context và orderId để sử dụng sau khi tải lại order
         final navigatorContext = context;
         final orderId = widget.order.id;
 
         // Chuyển đến màn hình dẫn đường ngay lập tức, không đợi tải lại dữ liệu order
-        debugPrint('🚀 Chuyển đến màn hình dẫn đường với orderId: $orderId');
 
         if (mounted) {
           Navigator.of(navigatorContext).pushReplacementNamed(
@@ -254,16 +247,17 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
   Widget build(BuildContext context) {
     final viewModel = Provider.of<OrderDetailViewModel>(context);
     final authViewModel = Provider.of<AuthViewModel>(context);
-
     if (!viewModel.canStartDelivery()) {
       return const SizedBox.shrink();
     }
 
     // Kiểm tra driver role - ẩn toàn bộ section nếu không có quyền
-    if (!DriverRoleChecker.canPerformActions(widget.order, authViewModel)) {
+    final canPerform = DriverRoleChecker.canPerformActions(widget.order, authViewModel);
+    
+    if (!canPerform) {
       return const SizedBox.shrink();
     }
-
+    
     if (_showImagePreview) {
       return _buildImagePreview();
     } else if (_showForm) {

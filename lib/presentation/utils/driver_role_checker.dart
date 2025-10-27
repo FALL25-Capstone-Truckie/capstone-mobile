@@ -5,11 +5,16 @@ import '../features/auth/viewmodels/auth_viewmodel.dart';
 /// Utility class để kiểm tra driver role và permissions
 class DriverRoleChecker {
   /// Kiểm tra xem user hiện tại có phải là primary driver của order không
+  /// Sử dụng phone number làm unique identifier (ID có thể khác giữa auth và order response)
   static bool isPrimaryDriver(OrderWithDetails order, AuthViewModel authViewModel) {
-    if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) return false;
+    if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) {
+      return false;
+    }
     
     final vehicleAssignmentId = order.orderDetails.first.vehicleAssignmentId;
-    if (vehicleAssignmentId == null) return false;
+    if (vehicleAssignmentId == null) {
+      return false;
+    }
     
     final vehicleAssignment = order.vehicleAssignments
         .cast<dynamic>()
@@ -17,15 +22,57 @@ class DriverRoleChecker {
           (va) => va?.id == vehicleAssignmentId,
           orElse: () => null,
         );
-    if (vehicleAssignment == null) return false;
+    if (vehicleAssignment == null) {
+      return false;
+    }
     
-    final currentUserId = authViewModel.driver?.id;
-    final primaryDriverId = vehicleAssignment.primaryDriver?.id;
+    final primaryDriver = vehicleAssignment.primaryDriver;
+    if (primaryDriver == null) {
+      return false;
+    }
     
-    return currentUserId != null && currentUserId == primaryDriverId;
+    // Get current user phone number (most reliable identifier)
+    final currentUserPhone = authViewModel.driver?.userResponse.phoneNumber;
+    final primaryDriverPhone = primaryDriver.phoneNumber;
+    
+    // debugPrint('🔍 DriverRoleChecker.isPrimaryDriver:');
+    // debugPrint('   📱 CURRENT USER (from auth):');
+    // debugPrint('      - Phone: "$currentUserPhone"');
+    // debugPrint('      - Name: "${authViewModel.driver?.userResponse.fullName}"');
+    // debugPrint('      - Username: "${authViewModel.driver?.userResponse.username}"');
+    // debugPrint('   🚗 PRIMARY DRIVER (from order):');
+    // debugPrint('      - Phone: "$primaryDriverPhone"');
+    // debugPrint('      - Name: "${primaryDriver.fullName}"');
+    // debugPrint('   🚗 SECONDARY DRIVER (from order):');
+    // debugPrint('      - Phone: "${vehicleAssignment.secondaryDriver?.phoneNumber}"');
+    // debugPrint('      - Name: "${vehicleAssignment.secondaryDriver?.fullName}"');
+    
+    // Primary method: Compare by phone number (unique and reliable)
+    if (currentUserPhone != null && 
+        currentUserPhone.isNotEmpty &&
+        primaryDriverPhone.isNotEmpty &&
+        currentUserPhone.trim() == primaryDriverPhone.trim()) {
+      // debugPrint('   ✅ MATCHED: Current user IS PRIMARY DRIVER');
+      return true;
+    }
+    
+    // Check if current user is secondary driver
+    final secondaryDriverPhone = vehicleAssignment.secondaryDriver?.phoneNumber;
+    if (currentUserPhone != null && 
+        currentUserPhone.isNotEmpty &&
+        secondaryDriverPhone != null &&
+        secondaryDriverPhone.isNotEmpty &&
+        currentUserPhone.trim() == secondaryDriverPhone.trim()) {
+      debugPrint('   ⚠️ Current user IS SECONDARY DRIVER (not primary)');
+      return false;
+    }
+
+    debugPrint('   ❌ NOT MATCHED: Current user is NEITHER primary nor secondary driver');
+    return false;
   }
   
   /// Kiểm tra xem user hiện tại có phải là secondary driver của order không
+  /// Sử dụng phone number làm unique identifier
   static bool isSecondaryDriver(OrderWithDetails order, AuthViewModel authViewModel) {
     if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) return false;
     
@@ -40,10 +87,22 @@ class DriverRoleChecker {
         );
     if (vehicleAssignment == null) return false;
     
-    final currentUserId = authViewModel.driver?.id;
-    final secondaryDriverId = vehicleAssignment.secondaryDriver?.id;
+    final secondaryDriver = vehicleAssignment.secondaryDriver;
+    if (secondaryDriver == null) return false;
     
-    return currentUserId != null && currentUserId == secondaryDriverId;
+    // Get current user phone number (most reliable identifier)
+    final currentUserPhone = authViewModel.driver?.userResponse.phoneNumber;
+    final secondaryDriverPhone = secondaryDriver.phoneNumber;
+    
+    // Compare by phone number (unique and reliable)
+    if (currentUserPhone != null && 
+        currentUserPhone.isNotEmpty &&
+        secondaryDriverPhone.isNotEmpty &&
+        currentUserPhone.trim() == secondaryDriverPhone.trim()) {
+      return true;
+    }
+    
+    return false;
   }
   
   /// Kiểm tra xem user hiện tại có được phép thực hiện actions trên order không
