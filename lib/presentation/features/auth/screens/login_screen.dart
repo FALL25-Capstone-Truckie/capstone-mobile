@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../app/app_routes.dart';
-import '../../../../core/services/service_locator.dart';
 import '../../../../core/utils/responsive_extensions.dart';
 import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/theme/app_colors.dart';
@@ -263,8 +261,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (mounted) {
           if (success) {
-            // Navigate to main screen on success
-            Navigator.pushReplacementNamed(context, '/main');
+            // CRITICAL: Don't navigate here - AuthViewModel handles navigation via setStatusWithNavigation()
+            // Navigating here causes conflicts and pushes user back to login
+            // Just let AuthViewModel handle the navigation automatically
+            debugPrint('Login successful - AuthViewModel will handle navigation');
           } else {
             // Show error message and reset loading state
             ScaffoldMessenger.of(context).showSnackBar(

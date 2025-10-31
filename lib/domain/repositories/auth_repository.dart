@@ -18,7 +18,7 @@ abstract class AuthRepository {
   Future<Either<Failure, User>> getCurrentUser();
 
   /// Làm mới token
-  Future<Either<Failure, TokenResponse>> refreshToken();
+  Future<Either<Failure, User>> refreshToken();
 
   /// Đổi mật khẩu
   Future<Either<Failure, bool>> changePassword(

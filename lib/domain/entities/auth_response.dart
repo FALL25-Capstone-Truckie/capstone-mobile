@@ -12,14 +12,6 @@ class AuthResponse extends Equatable {
     required this.user,
   });
 
-  factory AuthResponse.fromJson(Map<String, dynamic> json) {
-    return AuthResponse(
-      authToken: json['authToken'] ?? '',
-      refreshToken: json['refreshToken'] ?? '',
-      user: User.fromJson(json['user'] ?? {}),
-    );
-  }
-
   @override
   List<Object?> get props => [authToken, refreshToken, user];
 }

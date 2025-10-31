@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/app_routes.dart';
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -15,7 +15,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   late final AuthViewModel _authViewModel;
-  bool _isInitializing = true;
+  final bool _isInitializing = true;
 
   @override
   void initState() {
@@ -28,31 +28,30 @@ class _SplashScreenState extends State<SplashScreen> {
     // Đợi một chút để hiển thị splash screen
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Kiểm tra trạng thái đăng nhập và refresh token nếu cần
+    // Kiểm tra trạng thái đăng nhập
     if (_authViewModel.status == AuthStatus.authenticated) {
-      // Nếu đã đăng nhập, thử refresh token
-      final refreshed = await _authViewModel.forceRefreshToken();
-      debugPrint('Token refresh result: $refreshed');
-
-      if (refreshed) {
-        // Nếu refresh token thành công, chuyển đến trang chính
-        _navigateToMain();
-      } else {
-        // Nếu refresh token thất bại, chuyển đến trang đăng nhập
-        _navigateToLogin();
-      }
+      // CRITICAL: Don't call forceRefreshToken() right after login!
+      // Token was just obtained from login, and calling refresh immediately
+      // will cause the backend to revoke the new token (token rotation)
+      // Just navigate to main screen directly
+      debugPrint('✅ [SplashScreen] User is authenticated, navigating to main');
+      _navigateToMain();
     } else if (_authViewModel.status == AuthStatus.unauthenticated) {
       // Nếu chưa đăng nhập, chuyển đến trang đăng nhập
+      debugPrint('🔓 [SplashScreen] Status is unauthenticated, navigating to login');
       _navigateToLogin();
     } else {
       // Nếu đang trong trạng thái loading, đợi cho đến khi hoàn tất
-      _authViewModel.checkAuthStatus().then((_) {
-        if (_authViewModel.status == AuthStatus.authenticated) {
-          _navigateToMain();
-        } else {
-          _navigateToLogin();
-        }
-      });
+      debugPrint('⏳ [SplashScreen] Status is loading, waiting for checkAuthStatus...');
+      await _authViewModel.checkAuthStatus();
+      debugPrint('✅ [SplashScreen] checkAuthStatus completed');
+      debugPrint('👤 [SplashScreen] Driver info loaded: ${_authViewModel.driver != null}');
+      
+      if (_authViewModel.status == AuthStatus.authenticated) {
+        _navigateToMain();
+      } else {
+        _navigateToLogin();
+      }
     }
   }
 

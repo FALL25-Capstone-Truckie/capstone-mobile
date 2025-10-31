@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../../core/services/service_locator.dart';
 import '../../../../domain/entities/order.dart';
 import '../../../../domain/usecases/orders/get_driver_orders_usecase.dart';
 import '../../../common_widgets/base_viewmodel.dart';
@@ -38,7 +37,7 @@ class OrderListViewModel extends BaseViewModel {
         final shouldRetry = await handleUnauthorizedError(failure.message);
         if (shouldRetry) {
           // Nếu refresh token thành công, thử lại
-          debugPrint('Token refreshed, retrying to get orders...');
+          // debugPrint('Token refreshed, retrying to get orders...');
           await getDriverOrders();
           return;
         }

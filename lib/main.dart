@@ -5,10 +5,9 @@ import 'package:provider/provider.dart';
 
 import 'app/app.dart';
 import 'app/app_routes.dart';
+import 'app/di/service_locator.dart';
 import 'core/services/hot_reload_helper.dart';
-import 'core/services/index.dart';
 import 'core/services/vietmap_service.dart';
-import 'core/services/integrated_location_service.dart';
 import 'presentation/common_widgets/vietmap/vietmap_viewmodel.dart';
 import 'presentation/features/auth/index.dart';
 
@@ -26,45 +25,31 @@ void main() async {
 
   // Khởi tạo service locator (includes enhanced location services)
   debugPrint('🔧 Setting up service locator...');
-  await setupServiceLocator();
-  debugPrint('✅ Service locator setup complete');
-
-  // Attempt to recover location tracking if app was killed during tracking
-  debugPrint('🔄 Checking for location tracking recovery...');
   try {
-    final wasTrackingActive = await IntegratedLocationService.instance.wasTrackingActiveBeforeKill();
-    if (wasTrackingActive) {
-      debugPrint('📍 Previous tracking session detected, attempting recovery...');
-      final recovered = await IntegratedLocationService.instance.attemptRecovery();
-      if (recovered) {
-        debugPrint('✅ Location tracking recovered successfully');
-        
-        // Process background location queue
-        await IntegratedLocationService.instance.processBackgroundLocationQueue();
-      } else {
-        debugPrint('⚠️ Location tracking recovery failed');
-      }
-    } else {
-      debugPrint('ℹ️ No previous tracking session to recover');
-      
-      // Still process background queue in case there are pending locations
-      await IntegratedLocationService.instance.processBackgroundLocationQueue();
+    await setupServiceLocator();
+    debugPrint('✅ Service locator setup complete');
+    
+    // Verify AuthViewModel is registered
+    try {
+      final authVM = getIt<AuthViewModel>();
+      debugPrint('✅ AuthViewModel verified in GetIt');
+    } catch (e) {
+      debugPrint('❌ AuthViewModel NOT found in GetIt: $e');
+      rethrow;
     }
   } catch (e) {
-    debugPrint('❌ Error during recovery check: $e');
+    debugPrint('❌ Error setting up service locator: $e');
+    rethrow;
   }
+
+  // NOTE: Recovery features removed as part of architecture simplification
+  // GlobalLocationManager now handles all location tracking directly
+  // debugPrint('ℹ️ Location tracking will be managed by GlobalLocationManager');
 
   // Đặt navigatorKey cho AuthViewModel
   AuthViewModel.setNavigatorKey(navigatorKey);
 
-  // Đăng ký callback khi refresh token thất bại
-  ApiService.setTokenRefreshFailedCallback(() {
-    // Sử dụng GlobalKey<NavigatorState> để điều hướng mà không cần context
-    navigatorKey.currentState?.pushNamedAndRemoveUntil(
-      AppRoutes.login,
-      (route) => false,
-    );
-  });
+  // Token refresh callback is now handled in ApiClient via interceptor
 
   runApp(const MyApp());
 }
@@ -73,7 +58,7 @@ void main() async {
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -84,26 +69,26 @@ class MyApp extends StatelessWidget {
       splitScreenMode: true,
       // Use builder with context to ensure proper initialization
       builder: (context, child) {
+        // Get instances from service locator (already initialized in main())
+        final authViewModel = getIt<AuthViewModel>();
+        final vietMapService = getIt<VietMapService>();
+        
         return MultiProvider(
           providers: [
-            // Create a new AuthViewModel instance each time
-            ChangeNotifierProvider<AuthViewModel>(
-              create: (_) => getIt<AuthViewModel>(),
-              // Don't dispose the ViewModel when the provider is disposed
-              // This prevents errors during hot reload
-              lazy: false,
+            // AuthViewModel is already a LazySingleton in GetIt
+            // Access it directly without creating new instance
+            ChangeNotifierProvider<AuthViewModel>.value(
+              value: authViewModel,
             ),
             // Provide VietMapService
-            Provider<VietMapService>(
-              create: (_) => getIt<VietMapService>(),
-              lazy: false,
+            Provider<VietMapService>.value(
+              value: vietMapService,
             ),
             // Provide VietMapViewModel
             ChangeNotifierProvider<VietMapViewModel>(
               create: (context) => VietMapViewModel(
                 vietMapService: context.read<VietMapService>(),
               ),
-              lazy: false,
             ),
           ],
           child: TruckieApp(navigatorKey: navigatorKey),

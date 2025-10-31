@@ -58,7 +58,7 @@ class AccountViewModel extends BaseViewModel {
         final shouldRetry = await handleUnauthorizedError(failure.message);
         if (shouldRetry) {
           // Nếu refresh token thành công, thử lại
-          debugPrint('Token refreshed, retrying to get driver info...');
+          // debugPrint('Token refreshed, retrying to get driver info...');
           await getDriverInfo(userId);
           return;
         }
@@ -163,7 +163,7 @@ class AccountViewModel extends BaseViewModel {
     _status = AccountStatus.changingPassword;
     notifyListeners();
 
-    final result = await _changePasswordUseCase!(
+    final result = await _changePasswordUseCase(
       ChangePasswordParams(
         username: username,
         oldPassword: oldPassword,

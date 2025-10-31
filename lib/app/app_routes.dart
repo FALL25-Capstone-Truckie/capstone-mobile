@@ -11,8 +11,6 @@ import '../presentation/features/delivery/screens/active_delivery_screen.dart';
 import '../presentation/features/delivery/screens/delivery_map_screen.dart';
 import '../presentation/features/delivery/screens/navigation_screen.dart';
 import '../presentation/features/home/screens/home_screen.dart';
-import '../presentation/features/location_tracking/screens/driver_location_screen.dart';
-import '../presentation/features/location_tracking/screens/websocket_test_screen.dart';
 import '../presentation/features/main/screens/main_screen.dart';
 import '../presentation/features/orders/screens/order_detail_screen.dart';
 import '../presentation/features/orders/screens/orders_screen.dart';
@@ -23,6 +21,7 @@ import '../presentation/features/splash/screens/splash_screen.dart';
 
 class AppRoutes {
   // Route names
+  static const String testLogin = '/test-login';
   static const String root = '/';
   static const String splash = '/splash';
   static const String login = '/login';
@@ -36,8 +35,7 @@ class AppRoutes {
   static const String activeDelivery = '/active-delivery';
   static const String deliveryMap = '/delivery-map';
   static const String preDeliveryDocumentation = '/pre-delivery-documentation';
-  static const String driverLocation = '/driver-location';
-  static const String websocketTest = '/websocket-test';
+  // NOTE: driverLocation and websocketTest routes removed - testing features
   static const String routeDetails = '/route-details';
   static const String navigation = '/navigation';
 
@@ -135,6 +133,7 @@ class AppRoutes {
         final Map<String, dynamic> args =
             settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(
+          settings: settings, // CRITICAL: Set settings to enable popUntil by route name
           builder: (_) => ResponsiveWrapper(
             child: NavigationScreen(
               orderId: args['orderId'] as String,
@@ -143,23 +142,7 @@ class AppRoutes {
           ),
         );
 
-      case driverLocation:
-        final Map<String, dynamic> args =
-            settings.arguments as Map<String, dynamic>;
-        return MaterialPageRoute(
-          builder: (_) => ResponsiveWrapper(
-            child: DriverLocationScreen(
-              vehicleId: args['vehicleId'] as String,
-              licensePlateNumber: args['licensePlateNumber'] as String,
-              jwtToken: args['jwtToken'] as String,
-            ),
-          ),
-        );
-
-      case websocketTest:
-        return MaterialPageRoute(
-          builder: (_) => const ResponsiveWrapper(child: WebSocketTestScreen()),
-        );
+      // NOTE: driverLocation and websocketTest cases removed - testing features
 
       default:
         // Nếu route không được định nghĩa, trả về màn hình lỗi
@@ -180,7 +163,7 @@ class AppRoutes {
 class ResponsiveWrapper extends StatelessWidget {
   final Widget child;
 
-  const ResponsiveWrapper({Key? key, required this.child}) : super(key: key);
+  const ResponsiveWrapper({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {

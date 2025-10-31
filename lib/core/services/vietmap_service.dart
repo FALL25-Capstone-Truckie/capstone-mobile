@@ -3,16 +3,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api_service.dart';
+import 'http_client_interface.dart';
 
 class VietMapService {
-  final ApiService _apiService;
+  final IHttpClient _apiClient;
   static const String _cacheKey = 'vietmap_mobile_styles';
   static const Duration _cacheDuration = Duration(days: 7); // Cache 7 ngày
   String? _cachedStyle;
   DateTime? _cacheTimestamp;
 
-  VietMapService({required ApiService apiService}) : _apiService = apiService;
+  VietMapService({required IHttpClient apiClient}) : _apiClient = apiClient;
 
   // Lấy style map từ API backend
   Future<String> getMobileStyles() async {
@@ -49,17 +49,17 @@ class VietMapService {
     // Nếu không có cache hoặc cache đã hết hạn, gọi API
     try {
       debugPrint('Đang lấy style map từ API backend');
-      final response = await _apiService.get('/vietmap/mobile-styles');
+      final response = await _apiClient.dio.get('/vietmap/mobile-styles');
 
-      if (response != null) {
+      if (response.data != null) {
         String styleString;
 
         // Kiểm tra xem response có phải là Map với data không
-        if (response is Map && response.containsKey('data')) {
-          styleString = json.encode(response['data']);
+        if (response.data is Map && response.data.containsKey('data')) {
+          styleString = json.encode(response.data['data']);
         } else {
           // Nếu response đã là style trực tiếp
-          styleString = json.encode(response);
+          styleString = json.encode(response.data);
         }
 
         // Xử lý style JSON để đảm bảo các thuộc tính text-font là mảng

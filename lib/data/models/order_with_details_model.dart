@@ -1,44 +1,28 @@
 import '../../domain/entities/order_with_details.dart';
+import '../../domain/entities/order_detail.dart';
 import 'order_detail_model.dart';
 
 class OrderWithDetailsModel extends OrderWithDetails {
   const OrderWithDetailsModel({
-    required String id,
-    required String notes,
-    required int totalQuantity,
-    required String orderCode,
-    required String receiverName,
-    required String receiverPhone,
-    required String receiverIdentity,
-    required String packageDescription,
-    required DateTime createdAt,
-    required String status,
-    required String deliveryAddress,
-    required String pickupAddress,
-    required String senderName,
-    required String senderPhone,
-    required String senderCompanyName,
-    required String categoryName,
-    required List<OrderDetailModel> orderDetails,
-  }) : super(
-         id: id,
-         notes: notes,
-         totalQuantity: totalQuantity,
-         orderCode: orderCode,
-         receiverName: receiverName,
-         receiverPhone: receiverPhone,
-         receiverIdentity: receiverIdentity,
-         packageDescription: packageDescription,
-         createdAt: createdAt,
-         status: status,
-         deliveryAddress: deliveryAddress,
-         pickupAddress: pickupAddress,
-         senderName: senderName,
-         senderPhone: senderPhone,
-         senderCompanyName: senderCompanyName,
-         categoryName: categoryName,
-         orderDetails: orderDetails,
-       );
+    required super.id,
+    required super.notes,
+    required super.totalQuantity,
+    required super.orderCode,
+    required super.receiverName,
+    required super.receiverPhone,
+    required super.receiverIdentity,
+    required super.packageDescription,
+    required super.createdAt,
+    required super.status,
+    required super.deliveryAddress,
+    required super.pickupAddress,
+    required super.senderName,
+    required super.senderPhone,
+    required super.senderCompanyName,
+    required super.categoryName,
+    required List<OrderDetailModel> super.orderDetails,
+    super.vehicleAssignments = const [],
+  });
 
   factory OrderWithDetailsModel.fromJson(Map<String, dynamic> json) {
     return OrderWithDetailsModel(
@@ -65,6 +49,11 @@ class OrderWithDetailsModel extends OrderWithDetails {
               ?.map((e) => OrderDetailModel.fromJson(e))
               .toList() ??
           [],
+      vehicleAssignments:
+          (json['vehicleAssignments'] as List<dynamic>?)
+              ?.map((e) => VehicleAssignmentModel.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 
@@ -88,6 +77,9 @@ class OrderWithDetailsModel extends OrderWithDetails {
       'categoryName': categoryName,
       'orderDetails': orderDetails
           .map((e) => (e as OrderDetailModel).toJson())
+          .toList(),
+      'vehicleAssignments': vehicleAssignments
+          .map((e) => (e as VehicleAssignmentModel).toJson())
           .toList(),
     };
   }

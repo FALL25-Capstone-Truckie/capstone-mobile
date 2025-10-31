@@ -5,7 +5,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../../app/app_routes.dart';
+import '../../../../../core/services/ocr_service.dart';
+import '../../../../utils/driver_role_checker.dart';
 import '../../../../../domain/entities/order_with_details.dart';
+import '../../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../../../presentation/theme/app_colors.dart';
 import '../../../../../presentation/theme/app_text_styles.dart';
 import '../../viewmodels/order_detail_viewmodel.dart';
@@ -13,7 +16,7 @@ import '../../viewmodels/order_detail_viewmodel.dart';
 class StartDeliverySection extends StatefulWidget {
   final OrderWithDetails order;
 
-  const StartDeliverySection({Key? key, required this.order}) : super(key: key);
+  const StartDeliverySection({super.key, required this.order});
 
   @override
   State<StartDeliverySection> createState() => _StartDeliverySectionState();
@@ -23,14 +26,46 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
   final TextEditingController _odometerController = TextEditingController();
   File? _odometerImage;
   final ImagePicker _picker = ImagePicker();
+  final OCRService _ocrService = OCRService();
   bool _isLoading = false;
   bool _showForm = false;
   bool _showImagePreview = false;
+  bool _isProcessingOCR = false;
 
   @override
   void dispose() {
     _odometerController.dispose();
     super.dispose();
+  }
+
+  void _showImageSourceOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Chụp ảnh mới'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Chọn từ thư viện'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImageFromGallery();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _pickImage() async {
@@ -43,7 +78,75 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
     if (image != null) {
       setState(() {
         _odometerImage = File(image.path);
+        _isProcessingOCR = true;
       });
+
+      // Tự động xử lý OCR để đọc số từ ảnh
+      await _processOCR();
+    }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (image != null) {
+      setState(() {
+        _odometerImage = File(image.path);
+        _isProcessingOCR = true;
+      });
+
+      // Tự động xử lý OCR để đọc số từ ảnh
+      await _processOCR();
+    }
+  }
+
+  Future<void> _processOCR() async {
+    if (_odometerImage == null) return;
+
+    try {
+      final extractedText = await _ocrService.extractOdometerReading(
+        _odometerImage!,
+      );
+
+      if (extractedText != null && extractedText.isNotEmpty) {
+        setState(() {
+          _odometerController.text = extractedText;
+        });
+
+      } else {
+        // Không đọc được số, hiển thị thông báo
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Không thể đọc số từ ảnh. Vui lòng chụp lại ảnh rõ hơn.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Lỗi OCR: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lỗi khi đọc ảnh. Vui lòng chụp lại.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingOCR = false;
+        });
+      }
     }
   }
 
@@ -56,11 +159,18 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
   }
 
   Future<void> _startDelivery(BuildContext context) async {
+    // Kiểm tra driver role trước khi cho phép thực hiện action
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    if (!DriverRoleChecker.canPerformActions(widget.order, authViewModel)) {
+      // Không hiển thị thông báo, chỉ return để thân thiện với user
+      return;
+    }
+
     if (_odometerController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập chỉ số công tơ mét'),
-          backgroundColor: Colors.red,
+          content: Text('Vui lòng chụp ảnh công tơ mét để đọc số'),
+          backgroundColor: Colors.orange,
         ),
       );
       return;
@@ -80,10 +190,6 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       _isLoading = true;
     });
 
-    debugPrint('🚀 Bắt đầu gửi thông tin công tơ mét...');
-    debugPrint('🚀 Chỉ số công tơ mét: ${_odometerController.text}');
-    debugPrint('🚀 Đường dẫn ảnh: ${_odometerImage!.path}');
-
     try {
       final viewModel = Provider.of<OrderDetailViewModel>(
         context,
@@ -94,22 +200,12 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         odometerImage: _odometerImage!,
       );
 
-      debugPrint('🚀 Kết quả gửi thông tin: $success');
-
       if (success) {
         // Lưu lại context và orderId để sử dụng sau khi tải lại order
         final navigatorContext = context;
         final orderId = widget.order.id;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bắt đầu chuyến xe thành công'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
         // Chuyển đến màn hình dẫn đường ngay lập tức, không đợi tải lại dữ liệu order
-        debugPrint('🚀 Chuyển đến màn hình dẫn đường với orderId: $orderId');
 
         if (mounted) {
           Navigator.of(navigatorContext).pushReplacementNamed(
@@ -150,11 +246,18 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
   @override
   Widget build(BuildContext context) {
     final viewModel = Provider.of<OrderDetailViewModel>(context);
-
+    final authViewModel = Provider.of<AuthViewModel>(context);
     if (!viewModel.canStartDelivery()) {
       return const SizedBox.shrink();
     }
 
+    // Kiểm tra driver role - ẩn toàn bộ section nếu không có quyền
+    final canPerform = DriverRoleChecker.canPerformActions(widget.order, authViewModel);
+    
+    if (!canPerform) {
+      return const SizedBox.shrink();
+    }
+    
     if (_showImagePreview) {
       return _buildImagePreview();
     } else if (_showForm) {
@@ -163,6 +266,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       return _buildButton();
     }
   }
+
 
   Widget _buildImagePreview() {
     if (_odometerImage == null) {
@@ -215,10 +319,10 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: _pickImage,
+                  onPressed: _showImageSourceOptions,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.grey.shade200,
-                    foregroundColor: Colors.black87,
+                    foregroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: const Text('CHỤP LẠI'),
@@ -299,67 +403,106 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Nhập thông tin công tơ mét',
+            'Chụp ảnh công tơ mét đầu',
             style: AppTextStyles.titleSmall.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _odometerController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Chỉ số công tơ mét (km)',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 16,
+          if (_odometerImage != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Ảnh đã chụp',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
                     ),
-                    fillColor: Colors.white,
-                    filled: true,
+                    TextButton.icon(
+                      onPressed: _showImageSourceOptions,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Chụp lại'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    _odometerImage!,
+                    fit: BoxFit.cover,
+                    height: 150,
+                    width: double.infinity,
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              InkWell(
-                onTap: _odometerImage == null
-                    ? _pickImage
-                    : _showImagePreviewDialog,
-                child: Container(
-                  height: 56,
-                  width: 56,
-                  decoration: BoxDecoration(
-                    color: _odometerImage != null
-                        ? AppColors.success
-                        : AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
+                const SizedBox(height: 12),
+              ],
+            )
+          else
+            InkWell(
+              onTap: _showImageSourceOptions,
+              child: Container(
+                height: 150,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.border,
+                    style: BorderStyle.solid,
+                    width: 2,
                   ),
+                ),
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _odometerImage != null
-                          ? const Icon(Icons.check, color: Colors.white)
-                          : const Icon(Icons.camera_alt, color: Colors.white),
-                      if (_odometerImage == null) const SizedBox(height: 2),
-                      if (_odometerImage == null)
-                        Text(
-                          'Chụp',
-                          style: TextStyle(color: Colors.white, fontSize: 10),
+                      Icon(
+                        Icons.add_a_photo,
+                        size: 48,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Chụp ảnh công tơ mét',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
                         ),
-                      if (_odometerImage != null) const SizedBox(height: 2),
-                      if (_odometerImage != null)
-                        Text(
-                          'Xem',
-                          style: TextStyle(color: Colors.white, fontSize: 10),
-                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ],
+            ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _odometerController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            readOnly: true,
+            decoration: InputDecoration(
+              labelText: 'Chỉ số công tơ mét',
+              hintText: 'Sẽ tự động điền từ ảnh',
+              prefixIcon: const Icon(Icons.speed),
+              suffixText: 'km',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              fillColor: Colors.grey.shade50,
+              filled: true,
+              suffixIcon: _odometerController.text.isNotEmpty
+                  ? const Icon(Icons.check_circle, color: Colors.green)
+                  : null,
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -372,13 +515,15 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
                     foregroundColor: Colors.black87,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: const Text('HỦY'),
+                  child: const Text('HủY'),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : () => _startDelivery(context),
+                  onPressed: _isLoading || _isProcessingOCR
+                      ? null
+                      : () => _startDelivery(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,

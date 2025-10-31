@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
 import '../../../core/services/api_service.dart';
-import '../../../core/services/service_locator.dart';
+import '../../../app/di/service_locator.dart';
 import '../../../core/services/token_storage_service.dart';
 import '../../../core/services/vietmap_service.dart';
 import 'vietmap_viewmodel.dart';
@@ -19,8 +19,11 @@ class VietMapProvider extends StatelessWidget {
   /// Base URL for API calls
   final String baseUrl;
 
-  const VietMapProvider({Key? key, required this.child, required this.baseUrl})
-    : super(key: key);
+  const VietMapProvider({
+    super.key,
+    required this.child,
+    required this.baseUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +98,7 @@ class VietMap extends StatelessWidget {
   final String baseUrl;
 
   const VietMap({
-    Key? key,
+    super.key,
     required this.baseUrl,
     this.onMapCreated,
     this.onMapClick,
@@ -110,7 +113,7 @@ class VietMap extends StatelessWidget {
     this.bearingIcon,
     this.markers,
     this.staticMarkers,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

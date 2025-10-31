@@ -23,9 +23,9 @@ class TruckieApp extends StatelessWidget {
         // Luôn bắt đầu từ splash screen
         const String initialRoute = AppRoutes.splash;
 
-        debugPrint(
-          'Building app with auth status: ${authViewModel.status}, initialRoute: $initialRoute',
-        );
+        // debugPrint(
+        //   'Building app with auth status: ${authViewModel.status}, initialRoute: $initialRoute',
+        // );
 
         return MaterialApp(
           title: 'Truckie Driver',
@@ -80,11 +80,11 @@ class TruckieApp extends StatelessWidget {
             return MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 // Apply text scaling factor limit to ensure text doesn't get too large
-                textScaleFactor: MediaQuery.of(
-                  context,
-                ).textScaleFactor.clamp(0.8, 1.2),
                 padding: MediaQuery.of(context).padding.copyWith(
                   bottom: MediaQuery.of(context).padding.bottom,
+                ),
+                textScaler: TextScaler.linear(
+                  MediaQuery.of(context).textScaleFactor.clamp(0.8, 1.2),
                 ),
               ),
               child: child!,

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../../core/services/service_locator.dart';
+import '../../../../../app/di/service_locator.dart';
 import '../../../../../core/utils/responsive_extensions.dart';
 import '../../../../../domain/entities/driver.dart';
 import '../../../../../presentation/theme/app_colors.dart';
@@ -19,11 +19,11 @@ class DriverInfoForm extends StatefulWidget {
   final Function(bool) onUpdateComplete;
 
   const DriverInfoForm({
-    Key? key,
+    super.key,
     required this.driver,
     required this.formKey,
     required this.onUpdateComplete,
-  }) : super(key: key);
+  });
 
   @override
   State<DriverInfoForm> createState() => _DriverInfoFormState();

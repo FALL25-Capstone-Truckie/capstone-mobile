@@ -3,10 +3,11 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/app_routes.dart';
-import '../../../../core/services/service_locator.dart';
+import '../../../../app/di/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
 import '../../../../core/utils/responsive_extensions.dart';
 import '../../../../domain/entities/order.dart';
+import '../../../../domain/entities/order_status.dart';
 import '../../../../presentation/common_widgets/responsive_grid.dart';
 import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/common_widgets/skeleton_loader.dart';
@@ -37,6 +38,9 @@ class _OrdersScreenState extends State<OrdersScreen>
     // Đăng ký observer để theo dõi trạng thái app
     WidgetsBinding.instance.addObserver(this);
 
+    // Set default filter to 'Tất cả' (which will show all orders from PICKING_UP onwards)
+    _selectedStatus = 'Tất cả';
+
     // Fetch orders when the screen initializes
     _loadOrders();
   }
@@ -46,6 +50,13 @@ class _OrdersScreenState extends State<OrdersScreen>
     // Hủy đăng ký observer khi widget bị hủy
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Tải lại dữ liệu khi màn hình được hiển thị lại (chuyển tab)
+    _loadOrders();
   }
 
   @override
@@ -181,11 +192,38 @@ class _OrdersScreenState extends State<OrdersScreen>
     }
   }
 
+  /// Get list of valid statuses for driver (from FULLY_PAID onwards - ready for pickup)
+  static const List<String> _validDriverStatuses = [
+    'FULLY_PAID',
+    'PICKING_UP',
+    'ON_DELIVERED',
+    'ONGOING_DELIVERED',
+    'DELIVERED',
+    'IN_TROUBLES',
+    'RESOLVED',
+    'COMPENSATION',
+    'SUCCESSFUL',
+    'RETURNING',
+    'RETURNED',
+  ];
+
+  /// Check if order status is valid for driver view (FULLY_PAID or later)
+  bool _isValidOrderStatus(String status) {
+    return _validDriverStatuses.contains(status);
+  }
+
   List<Order> _getFilteredOrders(OrderListViewModel viewModel) {
+    // First, filter to only show orders from FULLY_PAID onwards
+    final validOrders = viewModel.orders
+        .where((order) => _isValidOrderStatus(order.status))
+        .toList();
+
     if (_selectedStatus == 'Tất cả') {
-      return viewModel.orders;
+      return validOrders;
     } else {
-      return viewModel.getOrdersByStatus(_selectedStatus);
+      return validOrders
+          .where((order) => _getStatusText(order.status) == _selectedStatus)
+          .toList();
     }
   }
 
@@ -220,11 +258,29 @@ class _OrdersScreenState extends State<OrdersScreen>
                 },
               ),
               SizedBox(width: 8.w),
-              _buildFilterChip('Đang giao', _selectedStatus == 'Đang giao', (
+              _buildFilterChip(
+                'Đang lấy hàng',
+                _selectedStatus == 'Đang lấy hàng',
+                (selected) {
+                  if (selected) {
+                    setState(() => _selectedStatus = 'Đang lấy hàng');
+                  }
+                },
+              ),
+              SizedBox(width: 8.w),
+              _buildFilterChip('Đang giao hàng', _selectedStatus == 'Đang giao hàng', (
                 selected,
               ) {
                 if (selected) {
-                  setState(() => _selectedStatus = 'Đang giao');
+                  setState(() => _selectedStatus = 'Đang giao hàng');
+                }
+              }),
+              SizedBox(width: 8.w),
+              _buildFilterChip('Đã giao hàng', _selectedStatus == 'Đã giao hàng', (
+                selected,
+              ) {
+                if (selected) {
+                  setState(() => _selectedStatus = 'Đã giao hàng');
                 }
               }),
               SizedBox(width: 8.w),
@@ -236,11 +292,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                 }
               }),
               SizedBox(width: 8.w),
-              _buildFilterChip('Đã hủy', _selectedStatus == 'Đã hủy', (
+              _buildFilterChip('Gặp sự cố', _selectedStatus == 'Gặp sự cố', (
                 selected,
               ) {
                 if (selected) {
-                  setState(() => _selectedStatus = 'Đã hủy');
+                  setState(() => _selectedStatus = 'Gặp sự cố');
                 }
               }),
             ],
@@ -303,9 +359,19 @@ class _OrdersScreenState extends State<OrdersScreen>
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
       child: InkWell(
-        onTap: () {
-          // Navigate to order details screen
-          Navigator.pushNamed(context, AppRoutes.orderDetail, arguments: order.id);
+        onTap: () async {
+          // Navigate to order details screen and reload when back
+          final result = await Navigator.pushNamed(
+            context,
+            AppRoutes.orderDetail,
+            arguments: order.id,
+          );
+          
+          // Reload orders after returning from detail screen
+          if (mounted && result == true) {
+            debugPrint('🔄 Reloading orders after returning from detail screen');
+            _loadOrders();
+          }
         },
         borderRadius: BorderRadius.circular(12.r),
         child: Padding(
@@ -392,43 +458,43 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED_TO_DRIVER':
+    final orderStatus = OrderStatus.fromString(status);
+    switch (orderStatus) {
+      case OrderStatus.pending:
+      case OrderStatus.processing:
+        return Colors.grey;
+      case OrderStatus.contractDraft:
+      case OrderStatus.contractSigned:
+      case OrderStatus.onPlanning:
+        return Colors.blue;
+      case OrderStatus.assignedToDriver:
+      case OrderStatus.fullyPaid:
         return AppColors.warning;
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
+      case OrderStatus.pickingUp:
         return Colors.orange;
-      case 'IN_PROGRESS':
-      case 'DELIVERING':
+      case OrderStatus.onDelivered:
+      case OrderStatus.ongoingDelivered:
         return AppColors.inProgress;
-      case 'COMPLETED':
-      case 'DELIVERED':
+      case OrderStatus.delivered:
+      case OrderStatus.successful:
         return AppColors.success;
-      case 'CANCELLED':
+      case OrderStatus.inTroubles:
         return AppColors.error;
-      default:
-        return AppColors.textSecondary;
+      case OrderStatus.resolved:
+      case OrderStatus.compensation:
+        return Colors.orange;
+      case OrderStatus.rejectOrder:
+        return AppColors.error;
+      case OrderStatus.returning:
+        return Colors.orange;
+      case OrderStatus.returned:
+        return Colors.grey;
     }
   }
 
   String _getStatusText(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED_TO_DRIVER':
-        return 'Chờ lấy hàng';
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
-        return 'Đang lấy hàng';
-      case 'IN_PROGRESS':
-      case 'DELIVERING':
-        return 'Đang giao';
-      case 'COMPLETED':
-      case 'DELIVERED':
-        return 'Hoàn thành';
-      case 'CANCELLED':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
+    final orderStatus = OrderStatus.fromString(status);
+    return orderStatus.toVietnamese();
   }
 }
 

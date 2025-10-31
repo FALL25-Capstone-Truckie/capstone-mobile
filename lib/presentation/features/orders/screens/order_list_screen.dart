@@ -6,7 +6,7 @@ import '../widgets/order_item.dart';
 import 'order_detail_screen.dart';
 
 class OrderListScreen extends StatefulWidget {
-  const OrderListScreen({Key? key}) : super(key: key);
+  const OrderListScreen({super.key});
 
   @override
   State<OrderListScreen> createState() => _OrderListScreenState();
@@ -16,6 +16,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedStatus = '';
+  bool _isInitialized = false;
 
   final List<Map<String, dynamic>> _statusFilters = [
     {'value': '', 'label': 'Tất cả'},
@@ -33,14 +34,8 @@ class _OrderListScreenState extends State<OrderListScreen> {
     // Lấy danh sách đơn hàng
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOrders();
+      _isInitialized = true;
     });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Tải lại dữ liệu khi màn hình được hiển thị lại
-    _loadOrders();
   }
 
   Future<void> _loadOrders() async {
@@ -261,12 +256,19 @@ class _OrderListScreenState extends State<OrderListScreen> {
     return filteredOrders;
   }
 
-  void _navigateToOrderDetail(String orderId) {
-    Navigator.push(
+  void _navigateToOrderDetail(String orderId) async {
+    // Navigate to detail screen and wait for result
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => OrderDetailScreen(orderId: orderId),
       ),
     );
+    
+    // Reload orders when coming back from detail screen if result is true
+    if (mounted && result == true) {
+      debugPrint('🔄 Reloading orders after returning from detail screen');
+      _loadOrders();
+    }
   }
 }

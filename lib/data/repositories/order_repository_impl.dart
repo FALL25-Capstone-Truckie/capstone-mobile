@@ -1,45 +1,53 @@
 import 'package:dartz/dartz.dart' hide Order;
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../core/errors/exceptions.dart';
 import '../../core/errors/failures.dart';
-import '../../core/services/api_service.dart';
+import '../datasources/api_client.dart';
+import '../datasources/order_data_source.dart';
 import '../../domain/entities/order.dart';
+import '../../domain/entities/order_detail_status.dart';
 import '../../domain/entities/order_with_details.dart';
 import '../../domain/repositories/order_repository.dart';
 import '../models/order_model.dart';
 import '../models/order_with_details_model.dart';
 
 class OrderRepositoryImpl implements OrderRepository {
-  final ApiService _apiService;
+  final ApiClient _apiClient;
+  final OrderDataSource _orderDataSource;
 
-  OrderRepositoryImpl({required ApiService apiService})
-    : _apiService = apiService;
+  OrderRepositoryImpl({
+    required ApiClient apiClient,
+    required OrderDataSource orderDataSource,
+  }) : _apiClient = apiClient,
+       _orderDataSource = orderDataSource;
 
   @override
   Future<Either<Failure, List<Order>>> getDriverOrders() async {
     try {
-      final response = await _apiService.get(
+      final response = await _apiClient.dio.get(
         '/orders/get-list-order-for-driver',
       );
 
-      if (response['success'] == true && response['data'] != null) {
-        final List<dynamic> ordersJson = response['data'];
+      if (response.data['success'] == true && response.data['data'] != null) {
+        final List<dynamic> ordersJson = response.data['data'];
         final List<Order> orders = ordersJson
             .map((orderJson) => OrderModel.fromJson(orderJson))
             .toList();
         return Right(orders);
       } else {
         // Check if this is a "Not found" response for no orders
-        if (response['statusCode'] == 400 &&
-            response['message'] != null &&
-            response['message'].toString().contains('Not found')) {
+        if (response.statusCode == 400 &&
+            response.data['message'] != null &&
+            response.data['message'].toString().contains('Not found')) {
           // Return an empty list instead of an error
           return const Right([]);
         }
 
         return Left(
           ServerFailure(
-            message: response['message'] ?? 'Lỗi khi lấy danh sách đơn hàng',
+            message: response.data['message'] ?? 'Lỗi khi lấy danh sách đơn hàng',
           ),
         );
       }
@@ -60,20 +68,20 @@ class OrderRepositoryImpl implements OrderRepository {
     String orderId,
   ) async {
     try {
-      final response = await _apiService.get(
+      final response = await _apiClient.dio.get(
         '/orders/get-order-by-id/$orderId',
       );
 
-      if (response['success'] == true &&
-          response['data'] != null &&
-          response['data']['order'] != null) {
-        final orderJson = response['data']['order'];
+      if (response.data['success'] == true &&
+          response.data['data'] != null &&
+          response.data['data']['order'] != null) {
+        final orderJson = response.data['data']['order'];
         final orderWithDetails = OrderWithDetailsModel.fromJson(orderJson);
         return Right(orderWithDetails);
       } else {
         return Left(
           ServerFailure(
-            message: response['message'] ?? 'Lỗi khi lấy chi tiết đơn hàng',
+            message: response.data['message'] ?? 'Lỗi khi lấy chi tiết đơn hàng',
           ),
         );
       }
@@ -89,20 +97,20 @@ class OrderRepositoryImpl implements OrderRepository {
     String orderId,
   ) async {
     try {
-      final response = await _apiService.get(
+      final response = await _apiClient.dio.get(
         '/orders/get-order-for-driver-by-order-id/$orderId',
       );
 
-      if (response['success'] == true &&
-          response['data'] != null &&
-          response['data']['order'] != null) {
-        final orderJson = response['data']['order'];
+      if (response.data['success'] == true &&
+          response.data['data'] != null &&
+          response.data['data']['order'] != null) {
+        final orderJson = response.data['data']['order'];
         final orderWithDetails = OrderWithDetailsModel.fromJson(orderJson);
         return Right(orderWithDetails);
       } else {
         return Left(
           ServerFailure(
-            message: response['message'] ?? 'Lỗi khi lấy chi tiết đơn hàng',
+            message: response.data['message'] ?? 'Lỗi khi lấy chi tiết đơn hàng',
           ),
         );
       }
@@ -111,5 +119,31 @@ class OrderRepositoryImpl implements OrderRepository {
     } catch (e) {
       return Left(ServerFailure(message: e.toString()));
     }
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateToOngoingDelivered(String orderId) async {
+    return await _orderDataSource.updateToOngoingDelivered(orderId);
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateToDelivered(String orderId) async {
+    return await _orderDataSource.updateToDelivered(orderId);
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateToSuccessful(String orderId) async {
+    return await _orderDataSource.updateToSuccessful(orderId);
+  }
+
+  @override
+  Future<Either<Failure, bool>> updateOrderDetailStatus({
+    required String assignmentId,
+    required OrderDetailStatus status,
+  }) async {
+    return await _orderDataSource.updateOrderDetailStatus(
+      assignmentId: assignmentId,
+      status: status,
+    );
   }
 }

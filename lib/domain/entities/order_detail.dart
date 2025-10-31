@@ -13,7 +13,7 @@ class OrderDetail extends Equatable {
   final DateTime createdAt;
   final String trackingCode;
   final OrderSize? orderSize;
-  final VehicleAssignment? vehicleAssignment;
+  final String? vehicleAssignmentId; // Changed from full object to ID reference
 
   const OrderDetail({
     required this.id,
@@ -28,7 +28,7 @@ class OrderDetail extends Equatable {
     required this.createdAt,
     required this.trackingCode,
     this.orderSize,
-    this.vehicleAssignment,
+    this.vehicleAssignmentId,
   });
 
   @override
@@ -45,7 +45,7 @@ class OrderDetail extends Equatable {
     createdAt,
     trackingCode,
     orderSize,
-    vehicleAssignment,
+    vehicleAssignmentId,
   ];
 }
 
@@ -91,6 +91,7 @@ class VehicleAssignment extends Equatable {
   final String status;
   final String trackingCode;
   final List<JourneyHistory> journeyHistories;
+  final List<OrderSeal> orderSeals;
 
   const VehicleAssignment({
     required this.id,
@@ -100,6 +101,7 @@ class VehicleAssignment extends Equatable {
     required this.status,
     required this.trackingCode,
     required this.journeyHistories,
+    this.orderSeals = const [],
   });
 
   @override
@@ -111,6 +113,7 @@ class VehicleAssignment extends Equatable {
     status,
     trackingCode,
     journeyHistories,
+    orderSeals,
   ];
 }
 
@@ -160,6 +163,8 @@ class JourneyHistory extends Equatable {
   final String journeyType;
   final String status;
   final double totalTollFee;
+  final int? totalTollCount;
+  final int? totalDistance;
   final String? reasonForReroute;
   final String vehicleAssignmentId;
   final List<JourneySegment> journeySegments;
@@ -172,6 +177,8 @@ class JourneyHistory extends Equatable {
     required this.journeyType,
     required this.status,
     required this.totalTollFee,
+    this.totalTollCount,
+    this.totalDistance,
     this.reasonForReroute,
     required this.vehicleAssignmentId,
     required this.journeySegments,
@@ -186,6 +193,8 @@ class JourneyHistory extends Equatable {
     journeyType,
     status,
     totalTollFee,
+    totalTollCount,
+    totalDistance,
     reasonForReroute,
     vehicleAssignmentId,
     journeySegments,
@@ -240,5 +249,48 @@ class JourneySegment extends Equatable {
     status,
     createdAt,
     modifiedAt,
+  ];
+}
+
+class OrderSeal extends Equatable {
+  final String id;
+  final String description;
+  final DateTime sealDate;
+  final String status; // ACTIVE, IN_USED, REMOVED, USED
+  final String sealId;
+  final String sealCode;
+  final String? sealAttachedImage;
+  final DateTime? sealRemovalTime;
+  final String? sealRemovalReason;
+
+  const OrderSeal({
+    required this.id,
+    required this.description,
+    required this.sealDate,
+    required this.status,
+    required this.sealId,
+    required this.sealCode,
+    this.sealAttachedImage,
+    this.sealRemovalTime,
+    this.sealRemovalReason,
+  });
+
+  bool get isActive => status == 'ACTIVE';
+  bool get isInUsed => status == 'IN_USED';
+  bool get isRemoved => status == 'REMOVED';
+  bool get isUsed => status == 'USED';
+  bool get canBeSelected => status == 'ACTIVE';
+
+  @override
+  List<Object?> get props => [
+    id,
+    description,
+    sealDate,
+    status,
+    sealId,
+    sealCode,
+    sealAttachedImage,
+    sealRemovalTime,
+    sealRemovalReason,
   ];
 }

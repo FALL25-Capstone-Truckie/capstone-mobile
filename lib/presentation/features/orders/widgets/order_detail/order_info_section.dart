@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../../core/utils/responsive_extensions.dart';
 import '../../../../../domain/entities/order_with_details.dart';
+import '../../../../../domain/entities/order_status.dart';
 import '../../../../../presentation/theme/app_colors.dart';
 import '../../../../../presentation/theme/app_text_styles.dart';
 
@@ -11,7 +12,7 @@ class OrderInfoSection extends StatelessWidget {
   /// Đối tượng chứa thông tin đơn hàng
   final OrderWithDetails order;
 
-  const OrderInfoSection({Key? key, required this.order}) : super(key: key);
+  const OrderInfoSection({super.key, required this.order});
 
   @override
   Widget build(BuildContext context) {
@@ -28,35 +29,30 @@ class OrderInfoSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Mã đơn: #${order.orderCode}',
-                    style: AppTextStyles.titleLarge,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+            // Hiển thị mã đơn đầy đủ
+            Text(
+              'Mã đơn: #${order.orderCode}',
+              style: AppTextStyles.titleLarge,
+            ),
+            SizedBox(height: 8.h),
+            // Status badge
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: 12.w,
+                vertical: 6.h,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Text(
+                _getStatusText(order.status),
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
                 ),
-                SizedBox(width: 8.w),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 12.w,
-                    vertical: 6.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(16.r),
-                  ),
-                  child: Text(
-                    _getStatusText(order.status),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
             SizedBox(height: 8.h),
             Row(
@@ -99,43 +95,43 @@ class OrderInfoSection extends StatelessWidget {
 
   /// Lấy màu tương ứng với trạng thái đơn hàng
   Color _getStatusColor(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED_TO_DRIVER':
+    final orderStatus = OrderStatus.fromString(status);
+    switch (orderStatus) {
+      case OrderStatus.pending:
+      case OrderStatus.processing:
+        return Colors.grey;
+      case OrderStatus.contractDraft:
+      case OrderStatus.contractSigned:
+      case OrderStatus.onPlanning:
+        return Colors.blue;
+      case OrderStatus.assignedToDriver:
+      case OrderStatus.fullyPaid:
         return AppColors.warning;
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
+      case OrderStatus.pickingUp:
         return Colors.orange;
-      case 'IN_PROGRESS':
-      case 'DELIVERING':
+      case OrderStatus.onDelivered:
+      case OrderStatus.ongoingDelivered:
         return AppColors.inProgress;
-      case 'COMPLETED':
-      case 'DELIVERED':
+      case OrderStatus.delivered:
+      case OrderStatus.successful:
         return AppColors.success;
-      case 'CANCELLED':
+      case OrderStatus.inTroubles:
         return AppColors.error;
-      default:
-        return AppColors.textSecondary;
+      case OrderStatus.resolved:
+      case OrderStatus.compensation:
+        return Colors.orange;
+      case OrderStatus.rejectOrder:
+        return AppColors.error;
+      case OrderStatus.returning:
+        return Colors.orange;
+      case OrderStatus.returned:
+        return Colors.grey;
     }
   }
 
   /// Chuyển đổi mã trạng thái thành text hiển thị
   String _getStatusText(String status) {
-    switch (status.toUpperCase()) {
-      case 'ASSIGNED_TO_DRIVER':
-        return 'Chờ lấy hàng';
-      case 'FULLY_PAID':
-      case 'PICKING_UP':
-        return 'Đang lấy hàng';
-      case 'IN_PROGRESS':
-      case 'DELIVERING':
-        return 'Đang giao';
-      case 'COMPLETED':
-      case 'DELIVERED':
-        return 'Hoàn thành';
-      case 'CANCELLED':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
+    final orderStatus = OrderStatus.fromString(status);
+    return orderStatus.toVietnamese();
   }
 }

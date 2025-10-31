@@ -17,92 +17,72 @@ class LoadingDocumentationRepositoryImpl
     : _apiClient = apiClient;
 
   @override
-  Future<Either<Failure, bool>> submitPreDeliveryDocumentation({
+  Future<Either<Failure, bool>> documentLoadingAndSeal({
     required String vehicleAssignmentId,
     required String sealCode,
-    required List<File>? packingProofImages,
-    required File? sealImage,
+    required List<File> packingProofImages,
+    required File sealImage,
   }) async {
     try {
-      // Tạo FormData
+      // Create FormData
       final formData = FormData();
 
-      // Thêm các trường form riêng lẻ thay vì JSON
-      // @ModelAttribute trong Spring Boot mong đợi các trường form riêng lẻ
+      // Add request fields separately (for @ModelAttribute binding)
       formData.fields.add(MapEntry('vehicleAssignmentId', vehicleAssignmentId));
       formData.fields.add(MapEntry('sealCode', sealCode));
 
-      // Debug log để kiểm tra request
-      debugPrint('========== REQUEST DEBUG INFO ==========');
+      // Debug log
+      debugPrint('========== LOADING DOCUMENTATION REQUEST DEBUG INFO ==========');
       debugPrint('vehicleAssignmentId: $vehicleAssignmentId');
       debugPrint('sealCode: $sealCode');
+      debugPrint('packingProofImages count: ${packingProofImages.length}');
+      debugPrint('sealImage path: ${sealImage.path}');
 
-      // Thêm hình ảnh đóng gói
-      if (packingProofImages != null && packingProofImages.isNotEmpty) {
-        debugPrint('Số lượng packingProofImages: ${packingProofImages.length}');
-        for (int i = 0; i < packingProofImages.length; i++) {
-          final file = packingProofImages[i];
-          debugPrint('packingProofImage[$i] path: ${file.path}');
-          debugPrint('packingProofImage[$i] exists: ${file.existsSync()}');
-          debugPrint('packingProofImage[$i] size: ${file.lengthSync()} bytes');
-
-          formData.files.add(
-            MapEntry(
-              'packingProofImages',
-              await MultipartFile.fromFile(
-                file.path,
-                filename: 'packing_proof_${i}.jpg',
-              ),
-            ),
-          );
-        }
-      } else {
-        debugPrint('Không có packingProofImages');
-      }
-
-      // Thêm hình ảnh seal
-      if (sealImage != null) {
-        debugPrint('sealImage path: ${sealImage.path}');
-        debugPrint('sealImage exists: ${sealImage.existsSync()}');
-        debugPrint('sealImage size: ${sealImage.lengthSync()} bytes');
+      // Add packing proof images
+      for (int i = 0; i < packingProofImages.length; i++) {
+        final file = packingProofImages[i];
+        debugPrint('packingProofImage[$i] path: ${file.path}');
+        debugPrint('packingProofImage[$i] exists: ${file.existsSync()}');
+        debugPrint('packingProofImage[$i] size: ${file.lengthSync()} bytes');
 
         formData.files.add(
           MapEntry(
-            'sealImage',
+            'packingProofImages',
             await MultipartFile.fromFile(
-              sealImage.path,
-              filename: 'seal_image.jpg',
+              file.path,
+              filename: 'packing_proof_$i.jpg',
             ),
           ),
         );
-      } else {
-        debugPrint('Không có sealImage');
       }
 
-      // Debug log để kiểm tra formData
-      debugPrint(
-        'FormData fields: ${formData.fields.map((e) => "${e.key}: ${e.value}").join(', ')}',
+      // Add seal image
+      debugPrint('sealImage exists: ${sealImage.existsSync()}');
+      debugPrint('sealImage size: ${sealImage.lengthSync()} bytes');
+      formData.files.add(
+        MapEntry(
+          'sealImage',
+          await MultipartFile.fromFile(
+            sealImage.path,
+            filename: 'seal_image.jpg',
+          ),
+        ),
       );
-      debugPrint('FormData files count: ${formData.files.length}');
-      formData.files.forEach((file) {
-        debugPrint('File name: ${file.key}, filename: ${file.value.filename}');
-      });
 
-      // Log thông tin API endpoint
+      // Log API endpoint
       debugPrint(
-        'API Endpoint: ${_apiClient.dio.options.baseUrl}/loading-documentation/pre-delivery',
+        'API Endpoint: ${_apiClient.dio.options.baseUrl}/loading-documentation/document-loading-and-seal',
       );
       debugPrint('========== END REQUEST DEBUG INFO ==========');
 
-      // Gọi API
+      // Call API
       final response = await _apiClient.dio.post(
-        '/loading-documentation/pre-delivery',
+        '/loading-documentation/document-loading-and-seal',
         data: formData,
       );
 
       debugPrint('========== RESPONSE DEBUG INFO ==========');
       debugPrint('Status Code: ${response.statusCode}');
-      debugPrint('Response Headers: ${response.headers}');
       debugPrint('Response Data: ${response.data}');
       debugPrint('========== END RESPONSE DEBUG INFO ==========');
 
@@ -113,15 +93,14 @@ class LoadingDocumentationRepositoryImpl
         } else {
           return Left(
             ServerFailure(
-              message:
-                  responseData['message'] ?? 'Lỗi khi gửi tài liệu đóng gói',
+              message: responseData['message'] ?? 'Lỗi khi gửi tài liệu đóng gói và seal',
             ),
           );
         }
       } else {
         return Left(
           ServerFailure(
-            message: 'Lỗi khi gửi tài liệu đóng gói: ${response.statusCode}',
+            message: 'Lỗi khi gửi tài liệu đóng gói và seal: ${response.statusCode}',
           ),
         );
       }
@@ -129,11 +108,6 @@ class LoadingDocumentationRepositoryImpl
       debugPrint('========== ERROR DEBUG INFO ==========');
       debugPrint('DioException: ${e.message}');
       debugPrint('DioException type: ${e.type}');
-      debugPrint('DioException error: ${e.error}');
-      debugPrint('DioException requestOptions: ${e.requestOptions.uri}');
-      debugPrint(
-        'DioException requestOptions headers: ${e.requestOptions.headers}',
-      );
       debugPrint('DioException response status: ${e.response?.statusCode}');
       debugPrint('DioException response data: ${e.response?.data}');
       debugPrint('========== END ERROR DEBUG INFO ==========');

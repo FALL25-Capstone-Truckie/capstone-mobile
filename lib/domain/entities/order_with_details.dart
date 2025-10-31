@@ -21,6 +21,7 @@ class OrderWithDetails extends Equatable {
   final String senderCompanyName;
   final String categoryName;
   final List<OrderDetail> orderDetails;
+  final List<VehicleAssignment> vehicleAssignments; // Moved from orderDetail level
 
   const OrderWithDetails({
     required this.id,
@@ -40,6 +41,7 @@ class OrderWithDetails extends Equatable {
     required this.senderCompanyName,
     required this.categoryName,
     required this.orderDetails,
+    this.vehicleAssignments = const [], // Default empty list
   });
 
   @override
@@ -61,6 +63,7 @@ class OrderWithDetails extends Equatable {
     senderCompanyName,
     categoryName,
     orderDetails,
+    vehicleAssignments,
   ];
 
   // Chuyển đổi từ OrderWithDetails sang Order
