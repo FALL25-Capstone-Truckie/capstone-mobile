@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import '../../../../data/models/user_model.dart';
+import '../../../../data/models/role_model.dart';
 import '../../../../data/datasources/api_client.dart';
 import '../../../../domain/entities/driver.dart';
 import '../../../../domain/entities/role.dart';
@@ -15,6 +16,7 @@ import '../../../../domain/usecases/auth/refresh_token_usecase.dart';
 import '../../../../app/app_routes.dart';
 import '../../../../app/di/service_locator.dart';
 import '../../../../core/services/token_storage_service.dart';
+import '../../../../core/services/notification_service.dart';
 import '../../../common_widgets/base_viewmodel.dart';
 
 enum AuthStatus { initial, authenticated, unauthenticated, loading, error }
@@ -138,6 +140,10 @@ class AuthViewModel extends BaseViewModel {
 
         // Now set authenticated status with navigation
         setStatusWithNavigation(AuthStatus.authenticated);
+        
+        // Connect to notification WebSocket
+        _connectNotificationService();
+        
         return true;
       },
     );
@@ -325,7 +331,7 @@ class AuthViewModel extends BaseViewModel {
               dateOfBirth: _user!.dateOfBirth,
               imageUrl: _user!.imageUrl,
               status: _user!.status,
-              role: _user!.role,
+              role: RoleModel.fromEntity(_user!.role),
               authToken: _user!.authToken,
               refreshToken: _user!.refreshToken,
             );
@@ -384,6 +390,9 @@ class AuthViewModel extends BaseViewModel {
         // Driver info will be fetched on-demand when needed.
         
         status = AuthStatus.authenticated;
+        
+        // Connect to notification WebSocket
+        _connectNotificationService();
       } catch (e) {
         // debugPrint('Error parsing stored user info: $e');
         status = AuthStatus.unauthenticated;
@@ -467,7 +476,7 @@ class AuthViewModel extends BaseViewModel {
           dateOfBirth: _user!.dateOfBirth,
           imageUrl: _user!.imageUrl,
           status: _user!.status,
-          role: _user!.role,
+          role: RoleModel.fromEntity(_user!.role),
           authToken: _user!.authToken,
           refreshToken: _user!.refreshToken,
         );
@@ -522,7 +531,7 @@ class AuthViewModel extends BaseViewModel {
           dateOfBirth: _user!.dateOfBirth,
           imageUrl: _user!.imageUrl,
           status: _user!.status,
-          role: _user!.role,
+          role: RoleModel.fromEntity(_user!.role),
           authToken: _user!.authToken,
           refreshToken: _user!.refreshToken,
         );
@@ -562,17 +571,77 @@ class AuthViewModel extends BaseViewModel {
   }
 
   /// Setup callback for 401 Unauthorized errors
-  /// When API returns 401, the callback will automatically logout the user
+  /// When API returns 401, try to refresh token first before logging out
   void _setupUnauthorizedCallback() {
     try {
       final apiClient = getIt<ApiClient>();
       apiClient.setOnUnauthorizedCallback(() async {
-        debugPrint('401 Unauthorized - Logging out user');
-        await logout();
+        debugPrint('🔓 [401 Callback] Unauthorized error - Attempting token refresh');
+        
+        // Try to refresh token first
+        try {
+          final success = await forceRefreshToken();
+          
+          if (success) {
+            debugPrint('✅ [401 Callback] Token refresh successful - Request will be retried');
+            // Token refreshed successfully, the request will be retried automatically
+            return;
+          } else {
+            debugPrint('❌ [401 Callback] Token refresh failed - Logging out user');
+            await logout();
+          }
+        } catch (e) {
+          debugPrint('❌ [401 Callback] Error during token refresh: $e - Logging out user');
+          await logout();
+        }
       });
       debugPrint('Unauthorized callback setup successfully');
     } catch (e) {
       debugPrint('Error setting up unauthorized callback: $e');
     }
+  }
+
+  /// Connect to notification WebSocket service
+  void _connectNotificationService() async {
+    debugPrint('🔌 [AuthViewModel] ========================================');
+    debugPrint('🔌 [AuthViewModel] _connectNotificationService() called');
+    debugPrint('🔌 [AuthViewModel] User is null: ${_user == null}');
+    debugPrint('🔌 [AuthViewModel] Driver is null: ${_driver == null}');
+    
+    if (_user == null) {
+      debugPrint('⚠️ [AuthViewModel] Cannot connect notification service - user is null');
+      return;
+    }
+
+    // 🆕 Fetch driver info if not available
+    if (_driver == null) {
+      debugPrint('📤 [AuthViewModel] Driver info not available, fetching...');
+      await refreshDriverInfo();
+      
+      if (_driver == null) {
+        debugPrint('⚠️ [AuthViewModel] Cannot connect notification service - driver info fetch failed');
+        return;
+      }
+    }
+
+    debugPrint('🔌 [AuthViewModel] User ID: ${_user!.id}');
+    debugPrint('🔌 [AuthViewModel] User Name: ${_user!.fullName}');
+    debugPrint('🔌 [AuthViewModel] Driver ID: ${_driver!.id}');
+    debugPrint('🔌 [AuthViewModel] Driver Name: ${_driver!.userResponse.fullName}');
+
+    try {
+      debugPrint('🔌 [AuthViewModel] Getting NotificationService from GetIt...');
+      final notificationService = getIt<NotificationService>();
+      debugPrint('🔌 [AuthViewModel] Got NotificationService, calling connect()...');
+      
+      // 🆕 CRITICAL: Use driver ID instead of user ID
+      notificationService.connect(_driver!.id);
+      debugPrint('✅ [AuthViewModel] Connected to notification service for driver: ${_driver!.id}');
+    } catch (e) {
+      debugPrint('❌ [AuthViewModel] Error connecting to notification service: $e');
+      debugPrint('❌ [AuthViewModel] Stack trace: ${StackTrace.current}');
+    }
+    
+    debugPrint('🔌 [AuthViewModel] ========================================');
   }
 }

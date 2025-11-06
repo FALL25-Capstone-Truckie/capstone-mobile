@@ -18,6 +18,12 @@ import '../../../../presentation/features/orders/viewmodels/order_detail_viewmod
 import '../../../../presentation/utils/driver_role_checker.dart';
 import '../viewmodels/navigation_viewmodel.dart';
 import '../widgets/map/image_based_3d_truck_marker.dart';
+import '../widgets/report_issue_bottom_sheet.dart';
+import '../widgets/pending_seal_replacement_banner.dart';
+import '../widgets/confirm_seal_replacement_sheet.dart';
+import '../../../../domain/entities/issue.dart';
+import '../../../../domain/repositories/issue_repository.dart';
+import '../../../../core/services/notification_service.dart';
 
 class NavigationScreen extends StatefulWidget {
   final String orderId;
@@ -58,6 +64,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   // Biến để theo dõi chế độ 3D
   bool _is3DMode = true;
 
+  // Pending seal replacements
+  List<Issue> _pendingSealReplacements = [];
+  bool _isLoadingPendingSeals = false;
+  
+  // Refresh stream subscription
+  StreamSubscription<void>? _refreshSubscription;
+
   // Custom marker for current location
   Symbol? _currentLocationMarker;
   
@@ -97,6 +110,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
     _loadMapStyle();
 
+    // 🆕 Subscribe to refresh stream from NotificationService
+    final notificationService = getIt<NotificationService>();
+    _refreshSubscription = notificationService.refreshStream.listen((_) {
+      debugPrint('🔄 [NavigationScreen] Received refresh signal, fetching pending seals...');
+      _fetchPendingSealReplacements();
+    });
+
     // Check if viewModel is already simulating (returning to active simulation)
     // Only set _isSimulating if viewModel confirms it's running
     if (_viewModel.isSimulating && widget.isSimulationMode) {
@@ -125,6 +145,86 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }).catchError((e) {
       debugPrint('   - Error loading order details: $e');
     });
+    
+    // 🆕 Fetch pending seal replacements sau khi có order details
+    _fetchPendingSealReplacements();
+  }
+  
+  /// Fetch pending seal replacements for current vehicle assignment
+  Future<void> _fetchPendingSealReplacements() async {
+    if (_viewModel.vehicleAssignmentId == null || 
+        _viewModel.vehicleAssignmentId!.isEmpty) {
+      debugPrint('⚠️ Cannot fetch pending seals - no vehicle assignment');
+      return;
+    }
+
+    setState(() {
+      _isLoadingPendingSeals = true;
+    });
+
+    try {
+      final issueRepository = getIt<IssueRepository>();
+      final vehicleAssignmentId = _viewModel.vehicleAssignmentId!;
+      
+      debugPrint('📤 Fetching pending seal replacements for VA: $vehicleAssignmentId');
+      
+      final pendingIssues = await issueRepository.getPendingSealReplacements(
+        vehicleAssignmentId,
+      );
+      
+      setState(() {
+        _pendingSealReplacements = pendingIssues;
+        _isLoadingPendingSeals = false;
+      });
+      
+      debugPrint('✅ Got ${pendingIssues.length} pending seal replacement(s)');
+    } catch (e) {
+      debugPrint('❌ Error fetching pending seal replacements: $e');
+      setState(() {
+        _isLoadingPendingSeals = false;
+      });
+    }
+  }
+
+  /// Show confirm seal replacement bottom sheet
+  void _showConfirmSealSheet(Issue issue) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ConfirmSealReplacementSheet(
+        issue: issue,
+        onConfirm: (imageBase64) async {
+          try {
+            final issueRepository = getIt<IssueRepository>();
+            await issueRepository.confirmSealReplacement(
+              issueId: issue.id,
+              newSealAttachedImage: imageBase64,
+            );
+            
+            // Refresh pending list
+            _fetchPendingSealReplacements();
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('✅ Đã xác nhận gắn seal mới thành công'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              _autoResumeSimulation();
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Lỗi: $e')),
+              );
+            }
+            rethrow;
+          }
+        },
+      ),
+    );
   }
   
   // Check if we need to resume simulation after action confirmation
@@ -291,6 +391,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.resumed && mounted) {
+      debugPrint('🔄 NavigationScreen resumed - refreshing pending seals');
+      _fetchPendingSealReplacements();
+    }
+  }
+
   void dispose() {
     // Clean up map resources to prevent buffer overflow
     try {
@@ -309,6 +419,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // Remove observers
     WidgetsBinding.instance.removeObserver(this);
 
+    // 🆕 Dispose refresh subscription
+    _refreshSubscription?.cancel();
+    
     // Unregister this screen from GlobalLocationManager
     _globalLocationManager.unregisterScreen('NavigationScreen');
 
@@ -1541,6 +1654,20 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }
   }
 
+  void _autoResumeSimulation() async {
+    debugPrint('🔄 _autoResumeSimulation called');
+    debugPrint('   - _isSimulating: $_isSimulating');
+    debugPrint('   - _isPaused: $_isPaused');
+    
+    // Auto resume simulation if it was paused and running
+    if (_isPaused && _isSimulating && mounted) {
+      debugPrint('✅ Seal confirmed, auto-resuming simulation');
+      _resumeSimulation();
+    } else {
+      debugPrint('ℹ️ No auto-resume needed: _isSimulating=$_isSimulating, _isPaused=$_isPaused');
+    }
+  }
+
   void _resumeSimulation() async {
     debugPrint('🔄 _resumeSimulation called');
     debugPrint('   - _isSimulating: $_isSimulating');
@@ -1760,34 +1887,30 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _reportIncident() {
-    // TODO: Implement incident reporting logic
     debugPrint('⚠️ Report incident button pressed');
 
-    showDialog(
+    // Get vehicle assignment ID from viewModel
+    final vehicleAssignmentId = _viewModel.vehicleAssignmentId;
+    
+    if (vehicleAssignmentId == null || vehicleAssignmentId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể báo cáo sự cố: Thiếu thông tin phương tiện'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Show bottom sheet for incident reporting
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Báo cáo sự cố'),
-          ],
-        ),
-        content: const Text(
-          'Chức năng báo cáo sự cố đang được phát triển.\n\n'
-          'Bạn sẽ có thể báo cáo các vấn đề như:\n'
-          '• Tai nạn giao thông\n'
-          '• Hỏng xe\n'
-          '• Thời tiết xấu\n'
-          '• Vấn đề với hàng hóa\n'
-          '• Khác',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Đóng'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ReportIssueBottomSheet(
+        vehicleAssignmentId: vehicleAssignmentId,
+        currentLocation: _viewModel.currentLocation,
       ),
     );
   }
@@ -2147,6 +2270,33 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 ],
               ),
             ),
+            
+            // 🆕 Pending Seal Replacement Banner
+            if (_pendingSealReplacements.isNotEmpty)
+              PendingSealReplacementBanner(
+                issue: _pendingSealReplacements.first,
+                onTap: () => _showConfirmSealSheet(_pendingSealReplacements.first),
+              ),
+
+            // Loading indicator cho pending seals
+            if (_isLoadingPendingSeals)
+              Container(
+                padding: const EdgeInsets.all(8),
+                color: AppColors.primary.withOpacity(0.05),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Đang kiểm tra seal...'),
+                  ],
+                ),
+              ),
+            
             Expanded(
               child: Container(
                 color: Colors.white,

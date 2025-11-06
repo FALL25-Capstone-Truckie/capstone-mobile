@@ -8,6 +8,7 @@ import 'app/app_routes.dart';
 import 'app/di/service_locator.dart';
 import 'core/services/hot_reload_helper.dart';
 import 'core/services/vietmap_service.dart';
+import 'core/services/notification_service.dart';
 import 'presentation/common_widgets/vietmap/vietmap_viewmodel.dart';
 import 'presentation/features/auth/index.dart';
 
@@ -72,6 +73,11 @@ class MyApp extends StatelessWidget {
         // Get instances from service locator (already initialized in main())
         final authViewModel = getIt<AuthViewModel>();
         final vietMapService = getIt<VietMapService>();
+        final notificationService = getIt<NotificationService>();
+        
+        // Initialize NotificationService with navigator key
+        final navigatorKey = GlobalKey<NavigatorState>();
+        notificationService.initialize(navigatorKey);
         
         return MultiProvider(
           providers: [

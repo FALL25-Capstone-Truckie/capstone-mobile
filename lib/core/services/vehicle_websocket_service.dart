@@ -61,21 +61,41 @@ class VehicleWebSocketService {
       // CRITICAL: Call actual refresh token API
       try {
         final apiClient = GetIt.instance<ApiClient>();
-        // SECURITY: Refresh token is now in HttpOnly cookie (not in request body)
-        // Mobile sends request with withCredentials: true to include cookies
-        final response = await apiClient.dio.post('/auths/mobile/token/refresh');
+        // Mobile app sends refreshToken in request body (not in cookie like web)
+        final requestData = {
+          'refreshToken': refreshToken,
+        };
+        debugPrint('🔄 [VehicleWebSocket] Request data: $requestData');
+        debugPrint('🔄 [VehicleWebSocket] Request data type: ${requestData.runtimeType}');
+        
+        // Try manual JSON encoding to ensure body is sent correctly
+        final response = await apiClient.dio.post(
+          '/auths/mobile/token/refresh',
+          data: jsonEncode(requestData),
+        );
         
         if (response.data['success'] == true && response.data['data'] != null) {
           final tokenData = response.data['data'];
-          final newAccessToken = tokenData['authToken'] ?? tokenData['accessToken'];
+          final newAccessToken = tokenData['accessToken'];
+          final newRefreshToken = tokenData['refreshToken'];
           
-          // Save new access token
+          if (newAccessToken == null || newAccessToken.isEmpty) {
+            debugPrint('❌ Backend did not return new access token');
+            return null;
+          }
+          
+          if (newRefreshToken == null || newRefreshToken.isEmpty) {
+            debugPrint('❌ Backend did not return new refresh token');
+            return null;
+          }
+          
+          // Save both tokens (token rotation)
           await tokenStorageService.saveAccessToken(newAccessToken);
+          await tokenStorageService.saveRefreshToken(newRefreshToken);
           
-          // SECURITY: New refresh token is automatically set in HttpOnly cookie by backend
-          // No need to manually save it
-          
-          debugPrint('✅ Token refresh successful, new access token obtained');
+          debugPrint('✅ Token refresh successful, new tokens obtained');
+          debugPrint('✅ New access token: ${newAccessToken.substring(0, 20)}...');
+          debugPrint('✅ New refresh token: ${newRefreshToken.substring(0, 20)}...');
           return newAccessToken;
         } else {
           debugPrint('❌ Token refresh API returned error: ${response.data['message']}');
