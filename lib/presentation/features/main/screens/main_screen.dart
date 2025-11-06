@@ -11,14 +11,16 @@ import '../../../../app/di/service_locator.dart';
 import '../../../theme/app_colors.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final int initialTab;
+  
+  const MainScreen({super.key, this.initialTab = 0});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
 
   // Danh sách các màn hình tương ứng với từng tab
   late final List<Widget> _screens;
@@ -26,6 +28,10 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize selected index from widget parameter
+    _selectedIndex = widget.initialTab;
+    debugPrint('🏠 MainScreen initialized with tab: $_selectedIndex');
+    
     // Khởi tạo các màn hình khi widget được tạo
     _screens = [
       const HomeScreen(),

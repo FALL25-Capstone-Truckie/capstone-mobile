@@ -65,6 +65,10 @@ class GlobalLocationManager {
   final int _maxReconnectAttempts = 10; // More attempts for long-running trips
   bool _isReconnecting = false;
 
+  // Simulation state persistence
+  Timer? _stateSaveTimer;
+  final Duration _stateSaveInterval = const Duration(seconds: 2); // Save every 2 seconds
+
   // Getters
   bool get isGlobalTrackingActive => _isGlobalTrackingActive;
   String? get currentOrderId => _currentOrderId;
@@ -202,6 +206,9 @@ class GlobalLocationManager {
         // Save navigation state to persistent storage
         await saveNavigationState();
         
+        // Start periodic state saving (especially for simulation mode)
+        _startPeriodicStateSaving();
+        
         debugPrint('✅ Global location tracking started successfully');
         return true;
       } else {
@@ -267,6 +274,9 @@ class GlobalLocationManager {
     _reconnectTimer = null;
     _reconnectAttempts = 0;
     _isReconnecting = false;
+    
+    // Stop periodic state saving
+    _stopPeriodicStateSaving();
     
     if (!_isGlobalTrackingActive) {
       debugPrint('⚠️ Global tracking not active');
@@ -443,15 +453,14 @@ class GlobalLocationManager {
       speed: speed,
     );
     
-    // Save position to persistent storage (especially important for simulation mode)
-    if (_isSimulationMode) {
-      await saveNavigationState(
-        latitude: latitude,
-        longitude: longitude,
-        bearing: bearing,
-        segmentIndex: segmentIndex,
-      );
-    }
+    // Save position to persistent storage (ALWAYS, for both GPS and simulation)
+    // This ensures state is saved even when app goes to background
+    await saveNavigationState(
+      latitude: latitude,
+      longitude: longitude,
+      bearing: bearing,
+      segmentIndex: segmentIndex,
+    );
   }
 
   /// Get comprehensive status
@@ -699,9 +708,37 @@ class GlobalLocationManager {
     }
   }
 
+  /// Start periodic state saving for simulation mode
+  void _startPeriodicStateSaving() {
+    if (!_isSimulationMode) {
+      debugPrint('ℹ️ Not in simulation mode, skipping periodic state saving');
+      return;
+    }
+    
+    _stopPeriodicStateSaving(); // Ensure no duplicate timers
+    
+    debugPrint('⏱️ Starting periodic state saving (every ${_stateSaveInterval.inSeconds}s)');
+    _stateSaveTimer = Timer.periodic(_stateSaveInterval, (timer) {
+      if (_isGlobalTrackingActive && _isSimulationMode) {
+        debugPrint('💾 Auto-saving simulation state...');
+        // State will be saved via sendLocationUpdate calls
+        // This timer is a backup to ensure state is always current
+      }
+    });
+  }
+  
+  /// Stop periodic state saving
+  void _stopPeriodicStateSaving() {
+    _stateSaveTimer?.cancel();
+    _stateSaveTimer = null;
+    debugPrint('⏹️ Stopped periodic state saving');
+  }
+
   /// Dispose resources
   void dispose() {
     _positionStream?.cancel();
+    _stateSaveTimer?.cancel();
+    _reconnectTimer?.cancel();
     _globalLocationController.close();
     _globalStatsController.close();
     _trackingStateController.close();

@@ -395,13 +395,74 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    if (state == AppLifecycleState.resumed && mounted) {
-      debugPrint('🔄 NavigationScreen resumed - refreshing pending seals');
+    debugPrint('🔄 App lifecycle state changed: $state');
+    
+    if (state == AppLifecycleState.paused) {
+      // App going to background - simulation continues in background
+      debugPrint('📱 App going to background - simulation continues');
+      debugPrint('   - isSimulating: $_isSimulating');
+      debugPrint('   - ViewModel.isSimulating: ${_viewModel.isSimulating}');
+      
+      // Save current state immediately for safety
+      if (_isSimulating && _viewModel.currentLocation != null) {
+        debugPrint('💾 Saving simulation state before background...');
+        _globalLocationManager.sendLocationUpdate(
+          _viewModel.currentLocation!.latitude,
+          _viewModel.currentLocation!.longitude,
+          bearing: _viewModel.currentBearing,
+          speed: _viewModel.currentSpeed,
+          segmentIndex: _viewModel.currentSegmentIndex,
+        );
+      }
+    } else if (state == AppLifecycleState.resumed && mounted) {
+      debugPrint('📱 App resumed from background');
+      debugPrint('   - isSimulating: $_isSimulating');
+      debugPrint('   - ViewModel.isSimulating: ${_viewModel.isSimulating}');
+      
+      // Refresh pending seals
       _fetchPendingSealReplacements();
+      
+      // Check if simulation should be running
+      if (widget.isSimulationMode && _viewModel.isSimulating) {
+        debugPrint('▶️ Simulation was active - checking if needs resume...');
+        
+        // Update camera to current position
+        if (_viewModel.currentLocation != null && _mapController != null) {
+          debugPrint('📍 Updating camera to current position');
+          _setCameraToNavigationMode(_viewModel.currentLocation!);
+        }
+        
+        // Update marker
+        if (_viewModel.currentLocation != null) {
+          _updateLocationMarker(
+            _viewModel.currentLocation!,
+            _viewModel.currentBearing,
+          );
+        }
+        
+        // Simulation timer should still be running unless explicitly paused
+        // No need to restart - it continues in background
+        debugPrint('✅ Simulation continues from background');
+      } else if (widget.isSimulationMode && !_viewModel.isSimulating && _globalLocationManager.isGlobalTrackingActive) {
+        // ViewModel lost simulation state but GlobalLocationManager is tracking
+        debugPrint('⚠️ State mismatch detected - attempting to restore simulation...');
+        _checkAndResumeAfterAction();
+      }
+    } else if (state == AppLifecycleState.inactive) {
+      // App is transitioning (e.g., during navigation or receiving a call)
+      debugPrint('📱 App inactive (transitioning)');
+    } else if (state == AppLifecycleState.detached) {
+      // App is being terminated
+      debugPrint('📱 App detached (terminating)');
     }
   }
 
+  @override
   void dispose() {
+    debugPrint('🗑️ NavigationScreen.dispose() called');
+    debugPrint('   - _isTripComplete: $_isTripComplete');
+    debugPrint('   - _isSimulating: $_isSimulating');
+    
     // Clean up map resources to prevent buffer overflow
     try {
       if (_mapController != null) {
@@ -428,17 +489,29 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // IMPORTANT: Don't stop tracking when just navigating away
     // Only stop when explicitly requested (trip complete, cancel, etc.)
     // This allows user to go back to order detail and return to navigation
+    // Simulation continues in background via GlobalLocationManager
 
     // Only stop if trip is complete
     if (_isTripComplete) {
-      debugPrint('🏁 Trip complete, stopping global tracking');
+      debugPrint('🏁 Trip complete, stopping global tracking and simulation');
       _globalLocationManager.stopGlobalTracking(reason: 'Trip completed');
       _viewModel.resetNavigation();
     } else {
-      debugPrint(
-        '🔄 Navigation screen disposed but global tracking continues in background',
-      );
-      // Keep tracking active for when user returns
+      debugPrint('🔄 Navigation screen disposed but tracking continues in background');
+      debugPrint('   - Simulation will continue if active');
+      debugPrint('   - State will be restored when screen is recreated');
+      
+      // Save current state one last time before dispose
+      if (_isSimulating && _viewModel.currentLocation != null) {
+        debugPrint('💾 Final state save before dispose...');
+        _globalLocationManager.sendLocationUpdate(
+          _viewModel.currentLocation!.latitude,
+          _viewModel.currentLocation!.longitude,
+          bearing: _viewModel.currentBearing,
+          speed: _viewModel.currentSpeed,
+          segmentIndex: _viewModel.currentSegmentIndex,
+        );
+      }
     }
     super.dispose();
   }
@@ -1548,14 +1621,27 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         debugPrint('   - Lat: ${savedState.currentLatitude}');
         debugPrint('   - Lng: ${savedState.currentLongitude}');
         debugPrint('   - Segment: ${savedState.currentSegmentIndex}');
+        debugPrint('   - Bearing: ${savedState.currentBearing}');
         
-        // Restore position in viewModel
+        // Restore position in viewModel with bearing
         if (savedState.currentSegmentIndex != null) {
           _viewModel.restoreSimulationPosition(
             segmentIndex: savedState.currentSegmentIndex!,
             latitude: savedState.currentLatitude!,
             longitude: savedState.currentLongitude!,
+            bearing: savedState.currentBearing,
           );
+          
+          // Update marker with restored position
+          _updateLocationMarker(
+            _viewModel.currentLocation!,
+            _viewModel.currentBearing,
+          );
+          
+          // Update camera to restored position
+          if (_isFollowingUser && _mapController != null) {
+            _setCameraToNavigationMode(_viewModel.currentLocation!);
+          }
         }
       } else {
         debugPrint('ℹ️ No saved position found to restore');
@@ -2171,15 +2257,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        // When back button is pressed, try to pop, if not possible go to order detail
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          Navigator.of(context).pushReplacementNamed(
-            AppRoutes.orderDetail,
-            arguments: widget.orderId,
-          );
-        }
+        // Use pushReplacement to go to OrderDetail
+        // This keeps navigation stack clean and avoids splash screen
+        debugPrint('🔙 NavigationScreen back pressed - going to OrderDetail');
+        debugPrint('   - Using pushReplacementNamed');
+        Navigator.of(context).pushReplacementNamed(
+          AppRoutes.orderDetail,
+          arguments: widget.orderId,
+        );
         return false; // Prevent default back behavior
       },
       child: Scaffold(
@@ -2190,15 +2275,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
-              // Try to pop, if not possible go to order detail
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              } else {
-                Navigator.of(context).pushReplacementNamed(
-                  AppRoutes.orderDetail,
-                  arguments: widget.orderId,
-                );
-              }
+              // Use pushReplacement to go to OrderDetail
+              debugPrint('🔙 Back button pressed - going to OrderDetail');
+              debugPrint('   - Using pushReplacementNamed');
+              Navigator.of(context).pushReplacementNamed(
+                AppRoutes.orderDetail,
+                arguments: widget.orderId,
+              );
             },
           ),
           actions: [
