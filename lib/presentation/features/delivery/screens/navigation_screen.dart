@@ -21,9 +21,12 @@ import '../widgets/map/image_based_3d_truck_marker.dart';
 import '../widgets/report_issue_bottom_sheet.dart';
 import '../widgets/pending_seal_replacement_banner.dart';
 import '../widgets/confirm_seal_replacement_sheet.dart';
+import '../widgets/fuel_invoice_upload_sheet.dart';
 import '../../../../domain/entities/issue.dart';
 import '../../../../domain/repositories/issue_repository.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../data/datasources/vehicle_fuel_consumption_data_source.dart';
+import 'dart:io';
 
 class NavigationScreen extends StatefulWidget {
   final String orderId;
@@ -70,6 +73,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   
   // Refresh stream subscription
   StreamSubscription<void>? _refreshSubscription;
+  
+  // Fuel consumption state
+  String? _fuelConsumptionId;
+  bool _isLoadingFuelConsumption = false;
 
   // Custom marker for current location
   Symbol? _currentLocationMarker;
@@ -142,12 +149,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         debugPrint('   - Route segments loaded after init, checking resume');
         _checkAndResumeAfterAction();
       }
+      
+      // 🆕 Fetch pending seal replacements sau khi có order details
+      _fetchPendingSealReplacements();
+      
+      // Fetch fuel consumption ID sau khi có vehicle assignment ID
+      _fetchFuelConsumptionId();
     }).catchError((e) {
       debugPrint('   - Error loading order details: $e');
     });
-    
-    // 🆕 Fetch pending seal replacements sau khi có order details
-    _fetchPendingSealReplacements();
   }
   
   /// Fetch pending seal replacements for current vehicle assignment
@@ -184,6 +194,169 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         _isLoadingPendingSeals = false;
       });
     }
+  }
+
+  /// Fetch fuel consumption ID by vehicle assignment
+  Future<void> _fetchFuelConsumptionId() async {
+    debugPrint('🔍 _fetchFuelConsumptionId called');
+    debugPrint('   - vehicleAssignmentId: ${_viewModel.vehicleAssignmentId}');
+    
+    if (_viewModel.vehicleAssignmentId == null || 
+        _viewModel.vehicleAssignmentId!.isEmpty) {
+      debugPrint('⚠️ Cannot fetch fuel consumption - no vehicle assignment');
+      return;
+    }
+
+    setState(() {
+      _isLoadingFuelConsumption = true;
+    });
+
+    try {
+      final dataSource = getIt<VehicleFuelConsumptionDataSource>();
+      debugPrint('📤 Calling getByVehicleAssignmentId with: ${_viewModel.vehicleAssignmentId}');
+      final result = await dataSource.getByVehicleAssignmentId(
+        _viewModel.vehicleAssignmentId!,
+      );
+      
+      result.fold(
+        (failure) {
+          debugPrint('❌ Failed to get fuel consumption: ${failure.message}');
+          setState(() {
+            _isLoadingFuelConsumption = false;
+          });
+          
+          // Show user-friendly message if no fuel consumption record found
+          if (failure.message.contains('Chưa có bản ghi tiêu thụ nhiên liệu')) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Chưa có bản ghi tiêu thụ nhiên liệu. Vui lòng tạo bản ghi trước khi upload hóa đơn.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        },
+        (response) {
+          debugPrint('📥 Fuel consumption response: $response');
+          if (response['success'] == true && response['data'] != null) {
+            setState(() {
+              _fuelConsumptionId = response['data']['id'];
+              _isLoadingFuelConsumption = false;
+            });
+            debugPrint('✅ Fuel consumption ID: $_fuelConsumptionId');
+          } else {
+            debugPrint('⚠️ Response success: ${response['success']}, data: ${response['data']}');
+            setState(() {
+              _isLoadingFuelConsumption = false;
+            });
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('❌ Error fetching fuel consumption: $e');
+      setState(() {
+        _isLoadingFuelConsumption = false;
+      });
+    }
+  }
+  
+  /// Show fuel invoice upload bottom sheet
+  void _showFuelInvoiceUploadSheet() {
+    debugPrint('🔍 _showFuelInvoiceUploadSheet called');
+    debugPrint('   - _fuelConsumptionId: $_fuelConsumptionId');
+    
+    if (_fuelConsumptionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tìm thấy thông tin tiêu thụ nhiên liệu'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FuelInvoiceUploadSheet(
+        fuelConsumptionId: _fuelConsumptionId!,
+        onConfirm: (imageFile) async {
+          try {
+            final dataSource = getIt<VehicleFuelConsumptionDataSource>();
+            final result = await dataSource.updateInvoiceImage(
+              fuelConsumptionId: _fuelConsumptionId!,
+              invoiceImage: imageFile,
+            );
+            
+            result.fold(
+              (failure) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Lỗi: ${failure.message}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              (success) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Đã upload hóa đơn xăng thành công'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+            );
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Lỗi: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            rethrow;
+          }
+        },
+      ),
+    );
+  }
+  
+  /// Debug method to test fuel invoice upload without fuel consumption ID
+  void _debugShowFuelInvoiceUpload() {
+    debugPrint('🐛 Debug: Showing fuel invoice upload with test ID');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FuelInvoiceUploadSheet(
+        fuelConsumptionId: 'test-id-12345',
+        onConfirm: (imageFile) async {
+          try {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('🐛 Debug: Upload clicked with test ID'),
+                backgroundColor: Colors.purple,
+              ),
+            );
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Lỗi debug: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        },
+      ),
+    );
   }
 
   /// Show confirm seal replacement bottom sheet
@@ -421,6 +594,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       
       // Refresh pending seals
       _fetchPendingSealReplacements();
+      
+      // Refresh fuel consumption
+      _fetchFuelConsumptionId();
       
       // Check if simulation should be running
       if (widget.isSimulationMode && _viewModel.isSimulating) {
@@ -2380,6 +2556,25 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 ),
               ),
             
+            // Loading indicator cho fuel consumption
+            if (_isLoadingFuelConsumption)
+              Container(
+                padding: const EdgeInsets.all(8),
+                color: Colors.green.withOpacity(0.05),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Đang tải thông tin nhiên liệu...'),
+                  ],
+                ),
+              ),
+            
             Expanded(
               child: Container(
                 color: Colors.white,
@@ -2556,6 +2751,28 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                             child: const Icon(
                               Icons.warning_amber_rounded,
                               color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Upload fuel invoice button
+                          Tooltip(
+                            message: _fuelConsumptionId != null 
+                              ? 'Upload hóa đơn xăng' 
+                              : 'Debug: Test upload (chưa có fuel consumption ID)',
+                            child: FloatingActionButton(
+                              onPressed: _fuelConsumptionId != null 
+                                ? _showFuelInvoiceUploadSheet 
+                                : _debugShowFuelInvoiceUpload,
+                              backgroundColor: _fuelConsumptionId != null 
+                                ? Colors.green 
+                                : Colors.orange,
+                              mini: true,
+                              heroTag: 'fuel',
+                              child: const Icon(
+                                Icons.local_gas_station,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ],
