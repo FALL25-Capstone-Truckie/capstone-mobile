@@ -119,9 +119,25 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
     // 🆕 Subscribe to refresh stream from NotificationService
     final notificationService = getIt<NotificationService>();
-    _refreshSubscription = notificationService.refreshStream.listen((_) {
-      debugPrint('🔄 [NavigationScreen] Received refresh signal, fetching pending seals...');
-      _fetchPendingSealReplacements();
+    _refreshSubscription = notificationService.refreshStream.listen((_) async {
+      debugPrint('🔄 [NavigationScreen] ========================================');
+      debugPrint('🔄 [NavigationScreen] Received refresh signal!');
+      debugPrint('🔄 [NavigationScreen] Fetching pending seals...');
+      
+      await _fetchPendingSealReplacements();
+      
+      debugPrint('🔄 [NavigationScreen] After fetch: ${_pendingSealReplacements.length} pending seals');
+      debugPrint('🔄 [NavigationScreen] isSimulationMode: ${widget.isSimulationMode}');
+      
+      // Auto-resume simulation if no pending seals
+      if (_pendingSealReplacements.isEmpty && widget.isSimulationMode) {
+        debugPrint('✅ [NavigationScreen] No pending seals, auto-resuming simulation...');
+        _autoResumeSimulation();
+      } else {
+        debugPrint('⚠️ [NavigationScreen] Not resuming: pending=${_pendingSealReplacements.length}, isSimMode=${widget.isSimulationMode}');
+      }
+      
+      debugPrint('🔄 [NavigationScreen] ========================================');
     });
 
     // Check if viewModel is already simulating (returning to active simulation)
@@ -360,8 +376,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   /// Show confirm seal replacement bottom sheet
-  void _showConfirmSealSheet(Issue issue) {
-    showModalBottomSheet(
+  void _showConfirmSealSheet(Issue issue) async {
+    debugPrint('📱 [NavigationScreen] Opening confirm seal sheet for issue: ${issue.id}');
+    
+    final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -369,25 +387,18 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         issue: issue,
         onConfirm: (imageBase64) async {
           try {
+            debugPrint('📤 [NavigationScreen] Confirming seal replacement...');
             final issueRepository = getIt<IssueRepository>();
             await issueRepository.confirmSealReplacement(
               issueId: issue.id,
               newSealAttachedImage: imageBase64,
             );
             
-            // Refresh pending list
-            _fetchPendingSealReplacements();
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('✅ Đã xác nhận gắn seal mới thành công'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              _autoResumeSimulation();
-            }
+            debugPrint('✅ [NavigationScreen] Seal replacement confirmed!');
+            // Return success to close bottom sheet and handle UI updates outside
+            return;
           } catch (e) {
+            debugPrint('❌ [NavigationScreen] Error confirming seal: $e');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Lỗi: $e')),
@@ -398,6 +409,35 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         },
       ),
     );
+    
+    // After bottom sheet is closed, check result before refreshing and showing success
+    debugPrint('📱 [NavigationScreen] Bottom sheet closed, result: $result');
+    
+    if (mounted && result == true) {
+      debugPrint('✅ [NavigationScreen] Processing success result...');
+      
+      // Wait a bit for backend to update issue status
+      debugPrint('⏳ [NavigationScreen] Waiting 500ms for backend to update...');
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Refresh pending list
+      debugPrint('🔄 [NavigationScreen] Fetching pending seals...');
+      await _fetchPendingSealReplacements();
+      
+      debugPrint('✅ [NavigationScreen] Pending seals fetched: ${_pendingSealReplacements.length}');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Đã xác nhận gắn seal mới thành công'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      debugPrint('🔄 [NavigationScreen] Auto-resuming simulation...');
+      _autoResumeSimulation();
+    } else {
+      debugPrint('⚠️ [NavigationScreen] Not processing: mounted=$mounted, result=$result');
+    }
   }
   
   // Check if we need to resume simulation after action confirmation
@@ -435,6 +475,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           debugPrint(
             '📍 Location update (resume): ${location.latitude}, ${location.longitude}, bearing: $bearing',
           );
+
+          // CRITICAL: Update viewModel's current location with simulated location
+          _viewModel.currentLocation = location;
 
           // Update custom location marker
           _updateLocationMarker(location, bearing);
@@ -1125,8 +1168,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 if (lat != null && lng != null) {
                   final location = LatLng(lat, lng);
 
-                  // Update viewModel's current location
-                  _viewModel.currentLocation = location;
+                  // Update viewModel's current location ONLY if not simulating
+                  // When simulating, viewModel.currentLocation should use simulated location
+                  if (!_viewModel.isSimulating) {
+                    _viewModel.currentLocation = location;
+                  }
 
                   if (_isFollowingUser && mounted) {
                     _setCameraToNavigationMode(location);
@@ -1222,8 +1268,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               if (lat != null && lng != null) {
                 final location = LatLng(lat, lng);
 
-                // Update viewModel's current location
-                _viewModel.currentLocation = location;
+                // Update viewModel's current location ONLY if not simulating
+                // When simulating, viewModel.currentLocation should use simulated location
+                if (!_viewModel.isSimulating) {
+                  _viewModel.currentLocation = location;
+                }
 
                 // Update camera if following user
                 if (_isFollowingUser && mounted) {
@@ -1838,6 +1887,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           '📍 Location update: ${location.latitude}, ${location.longitude}, bearing: $bearing',
         );
 
+        // CRITICAL: Update viewModel's current location with simulated location
+        // This ensures report incident uses simulated location, not GPS
+        _viewModel.currentLocation = location;
+
         // Update custom location marker
         _updateLocationMarker(location, bearing);
 
@@ -1920,14 +1973,23 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     debugPrint('🔄 _autoResumeSimulation called');
     debugPrint('   - _isSimulating: $_isSimulating');
     debugPrint('   - _isPaused: $_isPaused');
+    debugPrint('   - ViewModel.isSimulating: ${_viewModel.isSimulating}');
     
     // Auto resume simulation if it was paused and running
     if (_isPaused && _isSimulating && mounted) {
-      debugPrint('✅ Seal confirmed, auto-resuming simulation');
+      debugPrint('✅ Seal confirmed, auto-resuming simulation (was paused)');
       _resumeSimulation();
-    } else {
-      debugPrint('ℹ️ No auto-resume needed: _isSimulating=$_isSimulating, _isPaused=$_isPaused');
+      return;
     }
+    
+    // If simulation is in simulation mode but not actively running, restart it
+    if (widget.isSimulationMode && !_viewModel.isSimulating && mounted) {
+      debugPrint('✅ Seal confirmed, restarting simulation (was stopped)');
+      _startSimulation();
+      return;
+    }
+    
+    debugPrint('ℹ️ No auto-resume needed: _isSimulating=$_isSimulating, _isPaused=$_isPaused, viewModel.isSimulating=${_viewModel.isSimulating}');
   }
 
   void _resumeSimulation() async {
@@ -2166,6 +2228,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }
 
     // Show bottom sheet for incident reporting
+    debugPrint('📍 Opening report incident with location: ${_viewModel.currentLocation}');
+    debugPrint('   - Is simulating: ${_viewModel.isSimulating}');
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2173,6 +2238,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       builder: (context) => ReportIssueBottomSheet(
         vehicleAssignmentId: vehicleAssignmentId,
         currentLocation: _viewModel.currentLocation,
+        orderWithDetails: _viewModel.orderWithDetails,
       ),
     );
   }
@@ -2538,42 +2604,42 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               ),
 
             // Loading indicator cho pending seals
-            if (_isLoadingPendingSeals)
-              Container(
-                padding: const EdgeInsets.all(8),
-                color: AppColors.primary.withOpacity(0.05),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    SizedBox(width: 8),
-                    Text('Đang kiểm tra seal...'),
-                  ],
-                ),
-              ),
+            // if (_isLoadingPendingSeals)
+            //   Container(
+            //     padding: const EdgeInsets.all(8),
+            //     color: AppColors.primary.withOpacity(0.05),
+            //     child: const Row(
+            //       mainAxisAlignment: MainAxisAlignment.center,
+            //       children: [
+            //         SizedBox(
+            //           width: 16,
+            //           height: 16,
+            //           child: CircularProgressIndicator(strokeWidth: 2),
+            //         ),
+            //         SizedBox(width: 8),
+            //         Text('Đang kiểm tra seal...'),
+            //       ],
+            //     ),
+            //   ),
             
             // Loading indicator cho fuel consumption
-            if (_isLoadingFuelConsumption)
-              Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.green.withOpacity(0.05),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    SizedBox(width: 8),
-                    Text('Đang tải thông tin nhiên liệu...'),
-                  ],
-                ),
-              ),
+            // if (_isLoadingFuelConsumption)
+            //   Container(
+            //     padding: const EdgeInsets.all(8),
+            //     color: Colors.green.withOpacity(0.05),
+            //     child: const Row(
+            //       mainAxisAlignment: MainAxisAlignment.center,
+            //       children: [
+            //         SizedBox(
+            //           width: 16,
+            //           height: 16,
+            //           child: CircularProgressIndicator(strokeWidth: 2),
+            //         ),
+            //         SizedBox(width: 8),
+            //         Text('Đang tải thông tin nhiên liệu...'),
+            //       ],
+            //     ),
+            //   ),
             
             Expanded(
               child: Container(

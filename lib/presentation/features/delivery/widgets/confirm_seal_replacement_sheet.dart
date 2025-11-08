@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:convert';
 import '../../../../domain/entities/issue.dart';
 import '../../../theme/app_colors.dart';
-import '../../../../app/app_routes.dart';
 
 /// Bottom sheet để driver xác nhận đã gắn seal mới
 /// Yêu cầu chụp ảnh seal mới để xác nhận
@@ -98,26 +97,13 @@ class _ConfirmSealReplacementSheetState
       final bytes = await _sealImage!.readAsBytes();
       final base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
 
+      // Call the onConfirm callback - let the caller handle everything
       await widget.onConfirm(base64Image);
 
+      // Close the bottom sheet after successful confirmation
+      // Use pop with result to signal success
       if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã xác nhận gắn seal mới thành công'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        
-        // Navigate back to orders screen to continue trip
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.of(context).pushNamedAndRemoveUntil(
-              AppRoutes.orders,
-              (route) => false, // Remove all previous routes
-            );
-          }
-        });
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (mounted) {
@@ -125,6 +111,7 @@ class _ConfirmSealReplacementSheetState
           SnackBar(content: Text('Lỗi: $e')),
         );
       }
+      // Don't pop on error - let user retry or manually close
     } finally {
       if (mounted) {
         setState(() {

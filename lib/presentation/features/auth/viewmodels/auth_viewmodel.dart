@@ -78,34 +78,55 @@ class AuthViewModel extends BaseViewModel {
 
   // Setter cho status với chuyển hướng
   void setStatusWithNavigation(AuthStatus newStatus) {
+    debugPrint('🔄 [AuthViewModel] setStatusWithNavigation called');
+    debugPrint('🔄 [AuthViewModel] Current status: $_status');
+    debugPrint('🔄 [AuthViewModel] New status: $newStatus');
+    debugPrint('🔄 [AuthViewModel] navigatorKey is null: ${navigatorKey == null}');
+    debugPrint('🔄 [AuthViewModel] navigatorKey.currentState is null: ${navigatorKey?.currentState == null}');
+    
     if (_status != newStatus) {
       _status = newStatus;
 
       // Nếu trạng thái thay đổi thành authenticated và có navigatorKey
-      if (_status == AuthStatus.authenticated &&
-          navigatorKey?.currentState != null) {
-        // debugPrint(
-        //   'Auth status changed to authenticated, navigating to main screen',
-        // );
-        navigatorKey!.currentState!.pushNamedAndRemoveUntil(
-          AppRoutes.main,
-          (route) => false,
-        );
+      if (_status == AuthStatus.authenticated) {
+        debugPrint('✅ [AuthViewModel] Will navigate to main screen...');
+        _navigateWhenReady(AppRoutes.main);
       }
       // Nếu trạng thái thay đổi thành unauthenticated và có navigatorKey
-      else if (_status == AuthStatus.unauthenticated &&
-          navigatorKey?.currentState != null) {
-        // debugPrint(
-        //   'Auth status changed to unauthenticated, navigating to login screen',
-        // );
-        navigatorKey!.currentState!.pushNamedAndRemoveUntil(
-          AppRoutes.login,
-          (route) => false,
-        );
+      else if (_status == AuthStatus.unauthenticated) {
+        debugPrint('✅ [AuthViewModel] Will navigate to login screen...');
+        _navigateWhenReady(AppRoutes.login);
       }
 
       notifyListeners();
+    } else {
+      debugPrint('⚠️ [AuthViewModel] Status unchanged, skipping navigation');
     }
+  }
+
+  /// Navigate when navigator is ready (with retry mechanism)
+  void _navigateWhenReady(String route) async {
+    int attempts = 0;
+    const maxAttempts = 10;
+    const delayMs = 100;
+
+    while (attempts < maxAttempts) {
+      if (navigatorKey?.currentState != null) {
+        debugPrint('✅ [AuthViewModel] Navigator ready, navigating to $route...');
+        navigatorKey!.currentState!.pushNamedAndRemoveUntil(
+          route,
+          (route) => false,
+        );
+        debugPrint('✅ [AuthViewModel] Navigation to $route completed');
+        return;
+      }
+      
+      attempts++;
+      debugPrint('⏳ [AuthViewModel] Navigator not ready, retrying... ($attempts/$maxAttempts)');
+      await Future.delayed(Duration(milliseconds: delayMs));
+    }
+    
+    debugPrint('❌ [AuthViewModel] Failed to navigate after $maxAttempts attempts');
   }
 
   // GlobalKey để điều hướng mà không cần context
@@ -138,11 +159,16 @@ class AuthViewModel extends BaseViewModel {
         // and the new token gets revoked by the backend's token rotation.
         // Driver info will be fetched on-demand when needed.
 
+        // Connect to notification WebSocket BEFORE navigating
+        // This ensures NotificationService is ready before showing home screen
+        await _connectNotificationService();
+        
+        // Force status to loading to ensure setStatusWithNavigation will trigger navigation
+        // This handles the case where status might already be authenticated from checkAuthStatus
+        _status = AuthStatus.loading;
+        
         // Now set authenticated status with navigation
         setStatusWithNavigation(AuthStatus.authenticated);
-        
-        // Connect to notification WebSocket
-        _connectNotificationService();
         
         return true;
       },
@@ -391,8 +417,11 @@ class AuthViewModel extends BaseViewModel {
         
         status = AuthStatus.authenticated;
         
-        // Connect to notification WebSocket
-        _connectNotificationService();
+        // Connect to notification WebSocket (don't await to avoid blocking UI during startup)
+        // This will run in background and connect when ready
+        _connectNotificationService().catchError((error) {
+          debugPrint('❌ [AuthViewModel] Error connecting notification service during startup: $error');
+        });
       } catch (e) {
         // debugPrint('Error parsing stored user info: $e');
         status = AuthStatus.unauthenticated;
@@ -602,7 +631,7 @@ class AuthViewModel extends BaseViewModel {
   }
 
   /// Connect to notification WebSocket service
-  void _connectNotificationService() async {
+  Future<void> _connectNotificationService() async {
     debugPrint('🔌 [AuthViewModel] ========================================');
     debugPrint('🔌 [AuthViewModel] _connectNotificationService() called');
     debugPrint('🔌 [AuthViewModel] User is null: ${_user == null}');
@@ -634,8 +663,8 @@ class AuthViewModel extends BaseViewModel {
       final notificationService = getIt<NotificationService>();
       debugPrint('🔌 [AuthViewModel] Got NotificationService, calling connect()...');
       
-      // 🆕 CRITICAL: Use driver ID instead of user ID
-      notificationService.connect(_driver!.id);
+      // 🆕 CRITICAL: Use driver ID instead of user ID and AWAIT connection
+      await notificationService.connect(_driver!.id);
       debugPrint('✅ [AuthViewModel] Connected to notification service for driver: ${_driver!.id}');
     } catch (e) {
       debugPrint('❌ [AuthViewModel] Error connecting to notification service: $e');

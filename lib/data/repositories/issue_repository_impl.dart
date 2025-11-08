@@ -232,4 +232,68 @@ class IssueRepositoryImpl implements IssueRepository {
       return [];
     }
   }
+
+  @override
+  Future<Issue> reportDamageIssue({
+    required String vehicleAssignmentId,
+    required String issueTypeId,
+    required String orderDetailId,
+    required String description,
+    required List<String> damageImagePaths,
+    double? locationLatitude,
+    double? locationLongitude,
+  }) async {
+    try {
+      debugPrint('📦 Reporting damaged goods issue...');
+      debugPrint('   - Vehicle Assignment ID: $vehicleAssignmentId');
+      debugPrint('   - Issue Type ID: $issueTypeId');
+      debugPrint('   - Order Detail ID: $orderDetailId');
+      debugPrint('   - Description: $description');
+      debugPrint('   - Damage images count: ${damageImagePaths.length}');
+
+      // Create multipart form data
+      final formData = FormData();
+      formData.fields.add(MapEntry('vehicleAssignmentId', vehicleAssignmentId));
+      formData.fields.add(MapEntry('issueTypeId', issueTypeId));
+      formData.fields.add(MapEntry('orderDetailIds', orderDetailId));
+      formData.fields.add(MapEntry('description', description));
+      
+      if (locationLatitude != null) {
+        formData.fields.add(MapEntry('locationLatitude', locationLatitude.toString()));
+      }
+      if (locationLongitude != null) {
+        formData.fields.add(MapEntry('locationLongitude', locationLongitude.toString()));
+      }
+
+      // Add multiple image files
+      for (int i = 0; i < damageImagePaths.length; i++) {
+        final imagePath = damageImagePaths[i];
+        debugPrint('📤 Adding damage image ${i + 1}: $imagePath');
+        formData.files.add(
+          MapEntry(
+            'damageImages',
+            await MultipartFile.fromFile(
+              imagePath,
+              filename: imagePath.split('/').last,
+            ),
+          ),
+        );
+      }
+
+      final response = await _apiClient.post(
+        '/issues/damage',
+        data: formData,
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        debugPrint('✅ Damage issue reported successfully');
+        return Issue.fromJson(response.data['data']);
+      } else {
+        throw Exception('Failed to report damage issue');
+      }
+    } catch (e) {
+      debugPrint('❌ Error reporting damage issue: $e');
+      rethrow;
+    }
+  }
 }

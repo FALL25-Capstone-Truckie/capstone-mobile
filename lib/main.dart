@@ -47,9 +47,6 @@ void main() async {
   // GlobalLocationManager now handles all location tracking directly
   // debugPrint('ℹ️ Location tracking will be managed by GlobalLocationManager');
 
-  // Đặt navigatorKey cho AuthViewModel
-  AuthViewModel.setNavigatorKey(navigatorKey);
-
   // Token refresh callback is now handled in ApiClient via interceptor
 
   runApp(const MyApp());
@@ -75,8 +72,10 @@ class MyApp extends StatelessWidget {
         final vietMapService = getIt<VietMapService>();
         final notificationService = getIt<NotificationService>();
         
+        // Đặt navigatorKey cho AuthViewModel (sử dụng cùng key với TruckieApp)
+        AuthViewModel.setNavigatorKey(navigatorKey);
+        
         // Initialize NotificationService with navigator key
-        final navigatorKey = GlobalKey<NavigatorState>();
         notificationService.initialize(navigatorKey);
         
         return MultiProvider(

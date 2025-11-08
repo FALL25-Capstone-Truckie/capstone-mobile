@@ -26,7 +26,7 @@ class NotificationWebSocketDataSource {
 
     _stompClient = StompClient(
       config: StompConfig(
-        url: '${ApiConstants.wsBaseUrl}/vehicle-tracking-browser',
+        url: '${ApiConstants.wsBaseUrl}${ApiConstants.wsVehicleTrackingEndpoint}',
         onConnect: (StompFrame frame) {
           print('✅ Notification WebSocket connected');
           _subscribeToDriverNotifications(driverId);

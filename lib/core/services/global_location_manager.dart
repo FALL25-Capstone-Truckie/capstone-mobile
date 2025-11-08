@@ -69,6 +69,11 @@ class GlobalLocationManager {
   Timer? _stateSaveTimer;
   final Duration _stateSaveInterval = const Duration(seconds: 2); // Save every 2 seconds
 
+  // Track latest location
+  double? _lastLatitude;
+  double? _lastLongitude;
+  double? _lastBearing;
+
   // Getters
   bool get isGlobalTrackingActive => _isGlobalTrackingActive;
   String? get currentOrderId => _currentOrderId;
@@ -80,6 +85,11 @@ class GlobalLocationManager {
   bool get shouldResumeSimulation => _shouldResumeSimulation;
   String? get currentScreen => _currentScreen;
   Set<String> get activeScreens => Set.unmodifiable(_activeScreens);
+  
+  // Get current location (for damage reports, etc)
+  double? get currentLatitude => _lastLatitude;
+  double? get currentLongitude => _lastLongitude;
+  double? get currentBearing => _lastBearing;
   
   // Setter for resume flag
   void setShouldResumeSimulation(bool value) {
@@ -381,6 +391,11 @@ class GlobalLocationManager {
   void _handleGlobalLocationUpdate(Map<String, dynamic> data) {
     debugPrint('📍 Global location update: ${data['latitude']}, ${data['longitude']}');
     
+    // Store last known location
+    _lastLatitude = data['latitude'] as double?;
+    _lastLongitude = data['longitude'] as double?;
+    _lastBearing = data['bearing'] as double?;
+    
     // Broadcast to global stream
     _globalLocationController.add(data);
     
@@ -445,6 +460,11 @@ class GlobalLocationManager {
       debugPrint('⚠️ Cannot send location: only primary drivers can send location updates');
       return;
     }
+
+    // Store last known location
+    _lastLatitude = latitude;
+    _lastLongitude = longitude;
+    _lastBearing = bearing;
 
     await _enhancedService.sendLocationUpdate(
       latitude: latitude,

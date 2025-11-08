@@ -449,7 +449,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   : canUploadFinalOdometer
                       ? FinalOdometerSection(order: orderWithDetails)
                       : canConfirmDelivery
-                          ? DeliveryConfirmationSection(order: orderWithDetails)
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                DeliveryConfirmationSection(order: orderWithDetails),
+                                if (orderWithDetails.orderDetails.isNotEmpty)
+                                  DamageReportWithLocation(
+                                    order: orderWithDetails,
+                                    onReported: _loadOrderDetails,
+                                  ),
+                              ],
+                            )
                           : ElevatedButton(
                       onPressed: () async {
                         // Kiểm tra driver role trước khi cho phép thực hiện action

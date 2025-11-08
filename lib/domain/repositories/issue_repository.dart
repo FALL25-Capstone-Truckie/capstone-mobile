@@ -52,4 +52,15 @@ abstract class IssueRepository {
         issueId: issueId,
         newSealAttachedImage: newSealAttachedImage,
       );
+
+  /// Report damaged goods issue (Driver)
+  Future<Issue> reportDamageIssue({
+    required String vehicleAssignmentId,
+    required String issueTypeId,
+    required String orderDetailId,
+    required String description,
+    required List<String> damageImagePaths,
+    double? locationLatitude,
+    double? locationLongitude,
+  });
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../app/app_routes.dart';
 import '../../../app/di/service_locator.dart';
 import '../../../domain/repositories/issue_repository.dart';
 import '../../features/delivery/widgets/confirm_seal_replacement_sheet.dart';
@@ -65,107 +64,149 @@ class _SealAssignmentNotificationDialogState extends State<SealAssignmentNotific
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade100,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.lock_reset,
-              color: Colors.orange,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              widget.title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.orange,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: SingleChildScrollView(
+      elevation: 8,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 380),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Message
+            // Header compact
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.shade200),
+                gradient: LinearGradient(
+                  colors: [Colors.orange.shade600, Colors.orange.shade400],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
               ),
-              child: Text(
-                widget.message,
-                style: const TextStyle(fontSize: 14),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Seal info
-            _buildInfoRow('Nhân viên:', widget.staffName, Icons.person),
-            const SizedBox(height: 8),
-            _buildInfoRow('Seal cũ:', widget.oldSealCode, Icons.lock_open, 
-                color: Colors.red),
-            const SizedBox(height: 8),
-            _buildInfoRow('Seal mới:', widget.newSealCode, Icons.lock, 
-                color: Colors.green),
-            const SizedBox(height: 16),
-
-            // Instructions
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.info_outline, 
-                          size: 20, color: Colors.blue.shade700),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Hướng dẫn:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                    ],
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.lock_reset,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text('1. Gắn seal mới vào container'),
-                  const Text('2. Chụp ảnh seal đã gắn'),
-                  const Text('3. Xác nhận hoàn thành'),
-                  const Text('4. Tiếp tục chuyến đi'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Yêu cầu thay seal',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-      actions: [
-        // "Xử lý ngay" button - Open confirmation sheet
-        ElevatedButton.icon(
-          onPressed: () async {
+
+            // Content compact
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Message compact
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.orange.shade200,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.orange.shade700,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Staff ${widget.staffName} đã gán seal mới',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.3,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Seal comparison compact
+                  Row(
+                    children: [
+                      Expanded(child: _buildSealCard(
+                        label: 'Seal cũ',
+                        code: widget.oldSealCode,
+                        icon: Icons.lock_open,
+                        color: Colors.red,
+                      )),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(Icons.arrow_forward, color: Colors.grey.shade400, size: 18),
+                      ),
+                      Expanded(child: _buildSealCard(
+                        label: 'Seal mới',
+                        code: widget.newSealCode,
+                        icon: Icons.lock,
+                        color: Colors.green,
+                      )),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Actions compact
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                children: [
+                  // Primary button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () async {
             Navigator.of(context).pop();
             
             // 🆕 Open ConfirmSealReplacementSheet directly
@@ -195,7 +236,7 @@ class _SealAssignmentNotificationDialogState extends State<SealAssignmentNotific
             );
             
             // Show confirmation bottom sheet
-            showModalBottomSheet(
+            final result = await showModalBottomSheet<bool>(
               context: context,
               isScrollControlled: true,
               backgroundColor: Colors.transparent,
@@ -209,81 +250,150 @@ class _SealAssignmentNotificationDialogState extends State<SealAssignmentNotific
                       newSealAttachedImage: imageBase64,
                     );
                     
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('✅ Đã xác nhận gắn seal mới thành công'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                      
-                      // Navigate back to orders after successful confirmation
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        AppRoutes.orders,
-                        (route) => false,
-                      );
-                    }
+                    // Return success to close bottom sheet and handle navigation outside
+                    return;
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Lỗi: $e')),
                       );
                     }
+                    rethrow;
                   }
                 },
               ),
             );
-          },
-          icon: const Icon(Icons.arrow_forward),
-          label: const Text('Xử lý ngay'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
-            ),
-          ),
-        ),
-        
-        // "Đóng" button - Close dialog (pending seals already fetched)
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
             
-            // 🆕 No need to navigate - pending seals already fetched in initState
-            debugPrint('🔄 [SealAssignmentDialog] Closing dialog - pending seals already fetched');
+            // After bottom sheet is closed, check result before showing success
+            debugPrint('🔍 [SealAssignmentDialog] Checking result: result=$result, mounted=${context.mounted}');
+            
+            if (result == true) {
+              debugPrint('✅ [SealAssignmentDialog] Bottom sheet returned success!');
+              
+              // Trigger navigation screen refresh FIRST (before checking mounted)
+              // This is critical - refresh must happen even if dialog is unmounted
+              debugPrint('🔄 [SealAssignmentDialog] ========================================');
+              debugPrint('🔄 [SealAssignmentDialog] Triggering navigation screen refresh...');
+              debugPrint('🔄 [SealAssignmentDialog] This should:');
+              debugPrint('🔄 [SealAssignmentDialog]   1. Fetch pending seals (should be empty)');
+              debugPrint('🔄 [SealAssignmentDialog]   2. Hide banner (if list empty)');
+              debugPrint('🔄 [SealAssignmentDialog]   3. Resume simulation (if in sim mode)');
+              debugPrint('🔄 [SealAssignmentDialog] ========================================');
+              
+              // Wait a bit for backend to update issue status
+              await Future.delayed(const Duration(milliseconds: 500));
+              
+              getIt<NotificationService>().triggerNavigationScreenRefresh();
+              
+              debugPrint('✅ [SealAssignmentDialog] Refresh signal sent!');
+              
+              // Show snackbar only if context is still mounted
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Đã xác nhận gắn seal mới thành công'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              } else {
+                debugPrint('⚠️ [SealAssignmentDialog] Context unmounted, skipping snackbar');
+              }
+            } else {
+              debugPrint('⚠️ [SealAssignmentDialog] Bottom sheet result: $result (not success)');
+            }
           },
-          child: const Text('Đóng'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade600,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text(
+                          'Xử lý ngay',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  
+                  // Secondary button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 40,
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        debugPrint('🔄 [SealAssignmentDialog] Closing dialog - pending seals already fetched');
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.grey.shade700,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Để sau',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, IconData icon, 
-      {Color? color}) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: color ?? Colors.grey.shade600),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade700,
-          ),
+  Widget _buildSealCard({
+    required String label,
+    required String code,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 6),
+          Text(
+            label,
             style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color ?? Colors.black87,
+              fontSize: 10,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 2),
+          Text(
+            code,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
