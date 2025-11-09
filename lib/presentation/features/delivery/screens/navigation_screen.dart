@@ -1257,9 +1257,24 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             'NavigationScreen',
             onLocationUpdate: (data) {
               final isPrimary = _globalLocationManager.isPrimaryDriver;
-              debugPrint(
-                '📍 Global location update (${isPrimary ? "Primary" : "Secondary"} Driver): $data',
-              );
+              final vehicleIdInData = data['vehicleId']?.toString();
+              final expectedVehicleId = _viewModel.currentVehicleId;
+              
+              debugPrint('📍 [NavigationScreen] Location update received:');
+              debugPrint('   - Driver type: ${isPrimary ? "Primary" : "Secondary"}');
+              debugPrint('   - Vehicle in data: $vehicleIdInData');
+              debugPrint('   - Expected vehicle: $expectedVehicleId');
+              debugPrint('   - Location: ${data['latitude']}, ${data['longitude']}');
+              
+              // CRITICAL: Extra safety check - verify vehicle ID matches
+              if (vehicleIdInData != null && expectedVehicleId != null && 
+                  vehicleIdInData != expectedVehicleId) {
+                debugPrint('🚫🚫🚫 BLOCKED IN NAVIGATION SCREEN!');
+                debugPrint('   This location is for a DIFFERENT vehicle!');
+                debugPrint('   Expected: $expectedVehicleId');
+                debugPrint('   Got: $vehicleIdInData');
+                return; // STOP - don't update camera
+              }
 
               // Update current location in viewModel
               final lat = data['latitude'] as double?;
@@ -1276,7 +1291,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
                 // Update camera if following user
                 if (_isFollowingUser && mounted) {
+                  debugPrint('   ✅ Updating camera to this location');
                   _setCameraToNavigationMode(location);
+                } else {
+                  debugPrint('   ⏸️ Not following user, camera not updated');
                 }
               }
             },

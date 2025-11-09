@@ -186,11 +186,10 @@ class VehicleWebSocketService {
           _connectionStatus = WebSocketConnectionStatus.connected;
           _connectionStatusController.add(_connectionStatus);
 
-          // Subscribe to vehicle-specific broadcasts
+          // Subscribe ONLY to this vehicle-specific broadcasts
+          // CRITICAL: Do NOT subscribe to all vehicles to prevent camera focus issues
+          // in multi-trip orders where each driver should only see their own vehicle
           _subscribeToVehicleUpdates(vehicleId, onLocationBroadcast);
-
-          // Subscribe to all vehicles broadcasts (optional)
-          _subscribeToAllVehicles(onLocationBroadcast);
 
           onConnected?.call();
         },
@@ -429,6 +428,17 @@ class VehicleWebSocketService {
       callback: (frame) {
         try {
           final data = jsonDecode(frame.body ?? '{}') as Map<String, dynamic>;
+          
+          // CRITICAL: Verify this location update is for the correct vehicle
+          // This prevents camera focus issues if backend sends wrong vehicle data
+          final receivedVehicleId = data['vehicleId']?.toString();
+          if (receivedVehicleId != null && receivedVehicleId != vehicleId) {
+            debugPrint('⚠️ WARNING: Received location for wrong vehicle!');
+            debugPrint('   Expected: $vehicleId, Got: $receivedVehicleId');
+            debugPrint('   Ignoring this location update to prevent focus issues');
+            return;
+          }
+          
           debugPrint('📍 Vehicle $vehicleId location update: $data');
           onMessage?.call(data);
         } catch (e) {
@@ -438,9 +448,15 @@ class VehicleWebSocketService {
     );
   }
 
+  /// DEPRECATED: Do NOT use this method in driver app
+  /// This subscribes to ALL vehicles' locations which causes camera focus issues
+  /// in multi-trip orders. Each driver should ONLY see their own vehicle.
+  /// This method is kept for reference only (e.g., admin dashboard feature in future).
   void _subscribeToAllVehicles(Function(Map<String, dynamic>)? onMessage) {
     if (_client?.connected != true) return;
 
+    debugPrint('⚠️ WARNING: Subscribing to ALL vehicles - this should NOT be used in driver app!');
+    
     _client!.subscribe(
       destination: '/topic/vehicles/locations',
       callback: (frame) {

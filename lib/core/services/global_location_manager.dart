@@ -389,7 +389,20 @@ class GlobalLocationManager {
 
   /// Handle global location updates and distribute to registered screens
   void _handleGlobalLocationUpdate(Map<String, dynamic> data) {
-    debugPrint('📍 Global location update: ${data['latitude']}, ${data['longitude']}');
+    // CRITICAL: Final defense layer - verify this location is for OUR vehicle
+    // This prevents camera focus issues in multi-trip orders
+    final locationVehicleId = data['vehicleId']?.toString();
+    
+    if (locationVehicleId != null && _currentVehicleId != null && locationVehicleId != _currentVehicleId) {
+      debugPrint('🚫 CRITICAL: Location for WRONG vehicle received!');
+      debugPrint('   Expected vehicle: $_currentVehicleId');
+      debugPrint('   Received vehicle: $locationVehicleId');
+      debugPrint('   Location: ${data['latitude']}, ${data['longitude']}');
+      debugPrint('   ⚠️ This should NOT happen - check WebSocket subscriptions!');
+      return; // IGNORE locations from other vehicles
+    }
+    
+    debugPrint('📍 Global location update (vehicle: $_currentVehicleId): ${data['latitude']}, ${data['longitude']}');
     
     // Store last known location
     _lastLatitude = data['latitude'] as double?;
