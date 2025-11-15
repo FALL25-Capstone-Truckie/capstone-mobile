@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:dartz/dartz.dart';
 
-import '../../core/errors/exceptions.dart';
 import '../../core/errors/failures.dart';
 import '../../domain/repositories/photo_completion_repository.dart';
 import '../datasources/photo_completion_data_source.dart';

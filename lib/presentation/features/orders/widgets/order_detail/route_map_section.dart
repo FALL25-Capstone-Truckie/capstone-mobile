@@ -168,14 +168,16 @@ class _RouteMapSectionState extends State<RouteMapSection>
       return false;
     }
     
-    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
-      (va) => va.id == vehicleAssignmentId,
-      orElse: () => null,
-    );
-    
-    return vehicleAssignment != null &&
-        vehicleAssignment.journeyHistories.isNotEmpty &&
-        vehicleAssignment.journeyHistories.first.journeySegments.isNotEmpty;
+    try {
+      final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
+        (va) => va.id == vehicleAssignmentId,
+      );
+      
+      return vehicleAssignment.journeyHistories.isNotEmpty &&
+          vehicleAssignment.journeyHistories.first.journeySegments.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
   }
 
   Widget _buildRouteInfo() {
@@ -184,12 +186,13 @@ class _RouteMapSectionState extends State<RouteMapSection>
     }
 
     final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
-    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
-      (va) => va.id == vehicleAssignmentId,
-      orElse: () => null,
-    );
     
-    if (vehicleAssignment == null) {
+    VehicleAssignment? vehicleAssignment;
+    try {
+      vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
+        (va) => va.id == vehicleAssignmentId,
+      );
+    } catch (e) {
       return const SizedBox.shrink();
     }
 

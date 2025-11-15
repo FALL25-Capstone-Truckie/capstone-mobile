@@ -146,6 +146,7 @@ class SealInfoSection extends StatelessWidget {
       case 'ACTIVE':
         return Colors.green;
       case 'IN_USED':
+      case 'IN_USE': // Support both backend status values
         return Colors.blue;
       case 'REMOVED':
         return Colors.red;
@@ -161,6 +162,7 @@ class SealInfoSection extends StatelessWidget {
       case 'ACTIVE':
         return 'Hoạt động';
       case 'IN_USED':
+      case 'IN_USE': // Support both backend status values
         return 'Đang sử dụng';
       case 'REMOVED':
         return 'Đã gỡ';

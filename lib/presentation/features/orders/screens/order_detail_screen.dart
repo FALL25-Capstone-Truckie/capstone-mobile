@@ -249,10 +249,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final bool canReportOrderRejection = viewModel.canReportOrderRejection();
     final bool canConfirmReturnDelivery = viewModel.canConfirmReturnDelivery();
     final bool hasRouteData = viewModel.routeSegments.isNotEmpty;
+    
+    // Check if navigation button should be shown (from PICKING_UP to final status)
+    final orderStatus = OrderStatus.fromString(orderWithDetails.status);
+    final bool shouldShowNavigationButton = orderStatus == OrderStatus.pickingUp ||
+        orderStatus == OrderStatus.onDelivered ||
+        orderStatus == OrderStatus.ongoingDelivered ||
+        orderStatus == OrderStatus.delivered ||
+        orderStatus == OrderStatus.inTroubles ||
+        orderStatus == OrderStatus.resolved ||
+        orderStatus == OrderStatus.compensation ||
+        orderStatus == OrderStatus.successful ||
+        orderStatus == OrderStatus.returning ||
+        orderStatus == OrderStatus.returned;
 
     // Calculate bottom section height
     final bool hasActionButtons = canStartDelivery || canConfirmPreDelivery || canConfirmDelivery || canUploadFinalOdometer || canReportOrderRejection || canConfirmReturnDelivery;
-    final double bottomPadding = hasActionButtons || hasRouteData ? 200 : 24;
+    final double bottomPadding = hasActionButtons || shouldShowNavigationButton ? 200 : 24;
 
     return Stack(
       children: [
@@ -348,98 +361,111 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
         ),
 
-        // Route Button (separate background, above action buttons)
-        if (hasRouteData)
-          Positioned(
-            bottom: hasActionButtons ? 120 : 16, // Position above action buttons
-            right: 16,
-            child: Builder(
-              builder: (context) {
-                final isConnected = _globalLocationManager.isTrackingOrder(orderWithDetails.id);
-                return FloatingActionButton.extended(
-                  onPressed: () {
-                    if (isConnected) {
-                      bool hasNavigationScreen = false;
-                      Navigator.of(context).popUntil((route) {
-                        if (route.settings.name == AppRoutes.navigation) {
-                          hasNavigationScreen = true;
-                          return true;
-                        }
-                        if (route.isFirst) return true;
-                        return false;
-                      });
-                      if (!hasNavigationScreen) {
-                        Navigator.pushNamed(
-                          context,
-                          AppRoutes.navigation,
-                          arguments: {
-                            'orderId': orderWithDetails.id,
-                            'isSimulationMode': true,
-                          },
-                        );
-                      }
-                    } else {
-                      Navigator.pushNamed(
-                        context,
-                        AppRoutes.routeDetails,
-                        arguments: viewModel,
-                      );
-                    }
-                  },
-                  heroTag: 'routeDetailsButton',
-                  backgroundColor: isConnected ? AppColors.success : AppColors.primary,
-                  elevation: 4,
-                  icon: Icon(
-                    isConnected ? Icons.navigation : Icons.map_outlined,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  label: Text(
-                    isConnected ? 'Dẫn đường' : 'Lộ trình',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-        // Action Buttons Section (separate background)
-        if (hasActionButtons)
+        // Bottom Section with Navigation Button and Action Buttons
+        if (shouldShowNavigationButton || hasActionButtons)
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: Offset(0, -2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Navigation Button with transparent background (outside white container)
+                if (shouldShowNavigationButton) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 12,
+                      bottom: hasActionButtons ? 8 : 12 + MediaQuery.of(context).padding.bottom,
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Builder(
+                        builder: (context) {
+                          final isConnected = _globalLocationManager.isTrackingOrder(orderWithDetails.id);
+                          return FloatingActionButton.extended(
+                            onPressed: () {
+                              if (isConnected) {
+                                bool hasNavigationScreen = false;
+                                Navigator.of(context).popUntil((route) {
+                                  if (route.settings.name == AppRoutes.navigation) {
+                                    hasNavigationScreen = true;
+                                    return true;
+                                  }
+                                  if (route.isFirst) return true;
+                                  return false;
+                                });
+                                if (!hasNavigationScreen) {
+                                  Navigator.pushNamed(
+                                    context,
+                                    AppRoutes.navigation,
+                                    arguments: {
+                                      'orderId': orderWithDetails.id,
+                                      'isSimulationMode': true,
+                                    },
+                                  );
+                                }
+                              } else {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.routeDetails,
+                                  arguments: viewModel,
+                                );
+                              }
+                            },
+                            heroTag: 'routeDetailsButton',
+                            backgroundColor: isConnected ? AppColors.success : AppColors.primary,
+                            elevation: 4,
+                            icon: Icon(
+                              isConnected ? Icons.navigation : Icons.map_outlined,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            label: Text(
+                              isConnected ? 'Dẫn đường' : 'Lộ trình',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ],
-                border: Border(
-                  top: BorderSide(color: AppColors.border, width: 1),
-                ),
-              ),
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 12,
-                bottom: 12 + MediaQuery.of(context).padding.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Action Buttons
-                  if (hasActionButtons)
-                    canStartDelivery
+                
+                // Action Buttons with white background
+                if (hasActionButtons)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: Offset(0, -2),
+                        ),
+                      ],
+                      border: Border(
+                        top: BorderSide(color: AppColors.border, width: 1),
+                      ),
+                    ),
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 12,
+                      bottom: 12 + MediaQuery.of(context).padding.bottom,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Action Buttons
+                        canStartDelivery
                         ? StartDeliverySection(order: orderWithDetails)
                         : canUploadFinalOdometer
                             ? FinalOdometerSection(order: orderWithDetails)
@@ -542,8 +568,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                         ),
                                         child: const Text('Xác nhận hàng hóa và seal'),
                                       ),
-                ],
-              ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
       ],

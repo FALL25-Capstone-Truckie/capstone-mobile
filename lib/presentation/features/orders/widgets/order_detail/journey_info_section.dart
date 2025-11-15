@@ -206,21 +206,7 @@ class JourneyInfoSection extends StatelessWidget {
             ),
           ),
 
-          // Status badge
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: _getSegmentStatusColor(segment.status).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(6.r),
-            ),
-            child: Text(
-              _getSegmentStatusLabel(segment.status),
-              style: AppTextStyles.bodySmall.copyWith(
-                color: _getSegmentStatusColor(segment.status),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          // Remove status badge display as per user request
         ],
       ),
     );

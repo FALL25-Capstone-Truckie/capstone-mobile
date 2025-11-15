@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+import 'dart:convert';
 import '../../core/services/api_service.dart';
 import '../models/order_rejection_detail_response.dart';
 
@@ -16,9 +16,9 @@ class IssueRemoteDataSource {
     double? locationLongitude,
   }) async {
     try {
-      final response = await _apiService.dio.post(
+      final response = await _apiService.post(
         '/issues/order-rejection',
-        data: {
+        {
           'vehicleAssignmentId': vehicleAssignmentId,
           'issueTypeId': issueTypeId,
           'description': description,
@@ -26,7 +26,7 @@ class IssueRemoteDataSource {
           'locationLongitude': locationLongitude,
         },
       );
-      return response.data['data'];
+      return response['data'];
     } catch (e) {
       rethrow;
     }
@@ -35,10 +35,10 @@ class IssueRemoteDataSource {
   /// Get ORDER_REJECTION issue detail
   Future<OrderRejectionDetailResponse> getOrderRejectionDetail(String issueId) async {
     try {
-      final response = await _apiService.dio.get(
+      final response = await _apiService.get(
         '/issues/order-rejection/$issueId/detail',
       );
-      return OrderRejectionDetailResponse.fromJson(response.data['data']);
+      return OrderRejectionDetailResponse.fromJson(response['data']);
     } catch (e) {
       rethrow;
     }
@@ -50,14 +50,14 @@ class IssueRemoteDataSource {
     required List<String> returnDeliveryImages,
   }) async {
     try {
-      final response = await _apiService.dio.put(
+      final response = await _apiService.put(
         '/issues/order-rejection/confirm-return',
-        data: {
+        {
           'issueId': issueId,
           'returnDeliveryImages': returnDeliveryImages,
         },
       );
-      return response.data['data'];
+      return response['data'];
     } catch (e) {
       rethrow;
     }
@@ -66,17 +66,9 @@ class IssueRemoteDataSource {
   /// Upload image to server
   Future<String> uploadImage(String filePath) async {
     try {
-      String fileName = filePath.split('/').last;
-      FormData formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(filePath, filename: fileName),
-      });
-
-      final response = await _apiService.dio.post(
-        '/cloudinary/upload',
-        data: formData,
-      );
-      
-      return response.data['data']['url'];
+      // For file upload, we need to use a different approach with http.Client
+      // This would need to be implemented in ApiService or use a separate service
+      throw UnimplementedError('File upload needs to be implemented in ApiService');
     } catch (e) {
       rethrow;
     }

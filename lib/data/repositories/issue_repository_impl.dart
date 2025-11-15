@@ -370,6 +370,7 @@ class IssueRepositoryImpl implements IssueRepository {
       debugPrint('🚫 Reporting order rejection...');
       debugPrint('   - Vehicle Assignment ID: $vehicleAssignmentId');
       debugPrint('   - Selected packages: ${orderDetailIds.length}');
+      debugPrint('   - Order Detail IDs: $orderDetailIds');
 
       final response = await _apiClient.post(
         '/issues/order-rejection',

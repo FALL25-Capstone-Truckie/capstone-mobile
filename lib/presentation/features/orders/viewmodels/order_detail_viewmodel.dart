@@ -153,14 +153,24 @@ class OrderDetailViewModel extends BaseViewModel {
       return;
     }
 
-    // Select the active journey (prefer ACTIVE status, fallback to first)
+    // Select the journey based on order status
+    // For ONGOING_DELIVERED, we need the journey regardless of its status
     JourneyHistory journeyHistory;
     try {
+      // First try to find ACTIVE journey
       journeyHistory = vehicleAssignment.journeyHistories.firstWhere(
         (j) => j.status == 'ACTIVE',
       );
     } catch (e) {
-      journeyHistory = vehicleAssignment.journeyHistories.first;
+      try {
+        // If no ACTIVE journey, try to find INACTIVE journey (for ONGOING_DELIVERED status)
+        journeyHistory = vehicleAssignment.journeyHistories.firstWhere(
+          (j) => j.status == 'INACTIVE',
+        );
+      } catch (e2) {
+        // Fallback to first journey if no specific status found
+        journeyHistory = vehicleAssignment.journeyHistories.first;
+      }
     }
 
     for (var segment in journeyHistory.journeySegments) {

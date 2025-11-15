@@ -303,8 +303,12 @@ class ApiService {
           // Thông báo cho AuthViewModel về token mới
           try {
             final authViewModel = getIt.get(instanceName: 'AuthViewModel');
-            if (authViewModel != null && authViewModel is dynamic) {
-              await authViewModel.handleTokenRefreshed(newAccessToken);
+            if (authViewModel != null) {
+              // Cast to dynamic to access the method
+              final dynamic dynamicViewModel = authViewModel;
+              if (dynamicViewModel.handleTokenRefreshed != null) {
+                await dynamicViewModel.handleTokenRefreshed(newAccessToken);
+              }
             }
             // debugPrint('AuthViewModel updated with new token');
           } catch (e) {

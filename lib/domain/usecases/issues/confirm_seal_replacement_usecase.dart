@@ -10,10 +10,15 @@ class ConfirmSealReplacementUseCase {
   ConfirmSealReplacementUseCase(this.repository);
 
   Future<Either<Failure, Issue>> call(ConfirmSealReplacementParams params) async {
-    return await repository.confirmSealReplacement(
-      issueId: params.issueId,
-      newSealAttachedImage: params.newSealAttachedImage,
-    );
+    try {
+      final result = await repository.confirmSealReplacement(
+        issueId: params.issueId,
+        newSealAttachedImage: params.newSealAttachedImage,
+      );
+      return Right(result);
+    } catch (e) {
+      return Left(ServerFailure(message: 'Failed to confirm seal replacement: $e'));
+    }
   }
 }
 

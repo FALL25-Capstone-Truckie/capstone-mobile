@@ -116,6 +116,10 @@ class OrderRejectionButton extends StatelessWidget {
     IssueRepository issueRepository,
     OrderListViewModel orderListViewModel,
   ) async {
+    debugPrint('🔍 _reportOrderRejection called:');
+    debugPrint('   - vehicleAssignmentId: $vehicleAssignmentId');
+    debugPrint('   - orderDetailIds: $orderDetailIds');
+    
     // Show loading
     showDialog(
       context: context,
