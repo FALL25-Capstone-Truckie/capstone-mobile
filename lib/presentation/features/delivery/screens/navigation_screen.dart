@@ -75,6 +75,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   // Refresh stream subscription
   StreamSubscription<void>? _refreshSubscription;
   
+  // Seal bottom sheet stream subscription
+  StreamSubscription<String>? _sealBottomSheetSubscription;
+  
   // Fuel consumption state
   String? _fuelConsumptionId;
   bool _isLoadingFuelConsumption = false;
@@ -123,8 +126,20 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     _refreshSubscription = notificationService.refreshStream.listen((_) async {
       debugPrint('🔄 [NavigationScreen] ========================================');
       debugPrint('🔄 [NavigationScreen] Received refresh signal!');
-      debugPrint('🔄 [NavigationScreen] Fetching pending seals...');
       
+      // 🆕 Fetch latest order to get newest journey history (for return routes, reroutes)
+      debugPrint('🔄 [NavigationScreen] Fetching latest order details...');
+      await _loadOrderDetails();
+      debugPrint('🔄 [NavigationScreen] Order refreshed, route segments: ${_viewModel.routeSegments.length}');
+      
+      // Re-draw routes with new journey data
+      if (_viewModel.routeSegments.isNotEmpty && _isMapReady) {
+        debugPrint('🔄 [NavigationScreen] Redrawing routes with new journey...');
+        _drawRoutes();
+      }
+      
+      // Fetch pending seal replacements
+      debugPrint('🔄 [NavigationScreen] Fetching pending seals...');
       await _fetchPendingSealReplacements();
       
       debugPrint('🔄 [NavigationScreen] After fetch: ${_pendingSealReplacements.length} pending seals');
@@ -139,6 +154,33 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       }
       
       debugPrint('🔄 [NavigationScreen] ========================================');
+    });
+    
+    // 🆕 Subscribe to seal bottom sheet stream from NotificationService
+    // Pattern 2: Action-required notification
+    _sealBottomSheetSubscription = notificationService.showSealBottomSheetStream.listen((issueId) async {
+      debugPrint('📱 [NavigationScreen] ========================================');
+      debugPrint('📱 [NavigationScreen] Received seal bottom sheet trigger!');
+      debugPrint('📱 [NavigationScreen] Issue ID: $issueId');
+      
+      // Fetch pending seals to get the issue details
+      await _fetchPendingSealReplacements();
+      
+      // Find the issue in pending list
+      final issue = _pendingSealReplacements.firstWhere(
+        (i) => i.id == issueId,
+        orElse: () => _pendingSealReplacements.isNotEmpty ? _pendingSealReplacements.first : null as Issue,
+      );
+      
+      if (issue != null) {
+        debugPrint('✅ [NavigationScreen] Found issue, showing bottom sheet...');
+        // Show bottom sheet for seal confirmation
+        _showConfirmSealSheet(issue);
+      } else {
+        debugPrint('⚠️ [NavigationScreen] Issue not found in pending list');
+      }
+      
+      debugPrint('📱 [NavigationScreen] ========================================');
     });
 
     // Check if viewModel is already simulating (returning to active simulation)
@@ -166,15 +208,52 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         debugPrint('   - Route segments loaded after init, checking resume');
         _checkAndResumeAfterAction();
       }
-      
-      // 🆕 Fetch pending seal replacements sau khi có order details
-      _fetchPendingSealReplacements();
-      
-      // Fetch fuel consumption ID sau khi có vehicle assignment ID
-      _fetchFuelConsumptionId();
     }).catchError((e) {
       debugPrint('   - Error loading order details: $e');
     });
+    
+    // ⚡ Defer non-critical operations after first frame to improve initial render performance
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      debugPrint('⚡ Loading non-critical data in background...');
+      
+      // Precache truck marker images để giảm decode time khi hiển thị marker
+      _precacheTruckImages();
+      
+      // Fetch pending seal replacements (non-critical for initial render)
+      _fetchPendingSealReplacements();
+      
+      // Fetch fuel consumption ID (non-critical for initial render)
+      _fetchFuelConsumptionId();
+    });
+  }
+  
+  /// Precache truck marker images để giảm decode time
+  Future<void> _precacheTruckImages() async {
+    if (!mounted) return;
+    
+    final truckImagePaths = [
+      'assets/icons/truck_marker_icon/truck_north.png',
+      'assets/icons/truck_marker_icon/truck_northeast.png',
+      'assets/icons/truck_marker_icon/truck_east.png',
+      'assets/icons/truck_marker_icon/truck_southeast.png',
+      'assets/icons/truck_marker_icon/truck_south.png',
+      'assets/icons/truck_marker_icon/truck_southwest.png',
+      'assets/icons/truck_marker_icon/truck_west.png',
+      'assets/icons/truck_marker_icon/truck_northwest.png',
+    ];
+    
+    try {
+      debugPrint('🖼️ Precaching ${truckImagePaths.length} truck marker images...');
+      for (final imagePath in truckImagePaths) {
+        await precacheImage(AssetImage(imagePath), context);
+      }
+      debugPrint('✅ Truck marker images precached successfully');
+    } catch (e) {
+      debugPrint('⚠️ Error precaching truck images: $e');
+      // Non-critical, continue anyway
+    }
   }
   
   /// Fetch pending seal replacements for current vehicle assignment
@@ -357,7 +436,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           try {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('🐛 Debug: Upload clicked with test ID'),
+                content: Text('Vui lòng thử lại'),
                 backgroundColor: Colors.purple,
               ),
             );
@@ -702,6 +781,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
     // 🆕 Dispose refresh subscription
     _refreshSubscription?.cancel();
+    
+    // 🆕 Dispose seal bottom sheet subscription
+    _sealBottomSheetSubscription?.cancel();
     
     // Unregister this screen from GlobalLocationManager
     _globalLocationManager.unregisterScreen('NavigationScreen');
@@ -1121,19 +1203,27 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       _isConnectingWebSocket = true;
     });
 
-    // Show loading dialog
+    // Show progressive loading dialog
+    final progressNotifier = ValueNotifier<String>('Đang khởi động...');
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        title: Text('Đang kết nối'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Đang khởi động location tracking...'),
-          ],
+      builder: (context) => ValueListenableBuilder<String>(
+        valueListenable: progressNotifier,
+        builder: (context, message, child) => AlertDialog(
+          title: const Text('Đang kết nối'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1207,6 +1297,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         }
       }
 
+      // Update progress
+      progressNotifier.value = 'Xác thực thông tin tài xế...';
+      
       // Xác định driver role từ vehicle assignment hiện tại (không phải từ order chung)
       // CRITICAL: Với multi-trip orders, cần check xem user có phải là primary driver của CHUYẾN HIỆN TẠI
       bool isPrimaryDriver = true; // Default
@@ -1233,10 +1326,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         }
       }
 
+      // Update progress
+      progressNotifier.value = 'Đang kết nối tới máy chủ...';
+      
       // Use GlobalLocationManager instead of direct IntegratedLocationService
       // Get JWT token from TokenStorageService (always has the latest token after refresh)
       final tokenStorage = getIt<TokenStorageService>();
       final jwtToken = tokenStorage.getAccessToken();
+      
+      // Small delay to allow UI to update
+      await Future.delayed(const Duration(milliseconds: 100));
       
       final success = await _globalLocationManager.startGlobalTracking(
         orderId: widget.orderId,
@@ -2158,6 +2257,35 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       await Future.delayed(const Duration(milliseconds: 500));
     }
     
+    // CRITICAL: Check if already at end of current segment
+    // If yes, move to next segment first before jumping
+    if (_viewModel.routeSegments.isNotEmpty && 
+        _viewModel.currentSegmentIndex < _viewModel.routeSegments.length) {
+      final currentSegment = _viewModel.routeSegments[_viewModel.currentSegmentIndex];
+      if (currentSegment.points.isNotEmpty && _viewModel.currentLocation != null) {
+        final endPoint = currentSegment.points.last;
+        final distanceToEnd = _calculateDistance(
+          _viewModel.currentLocation!,
+          endPoint,
+        );
+        
+        debugPrint('🔍 Checking if at end of segment:');
+        debugPrint('   - Distance to end: ${distanceToEnd.toStringAsFixed(2)}m');
+        debugPrint('   - Current segment: ${_viewModel.currentSegmentIndex}');
+        
+        // If already at end of segment (within 20m), move to next segment first
+        if (distanceToEnd < 20 && _viewModel.currentSegmentIndex < _viewModel.routeSegments.length - 1) {
+          debugPrint('📍 Already at end of segment ${_viewModel.currentSegmentIndex}, moving to next segment first...');
+          _viewModel.moveToNextSegmentManually();
+          
+          // Wait a moment for state update
+          await Future.delayed(const Duration(milliseconds: 100));
+          
+          debugPrint('   ✅ Moved to segment ${_viewModel.currentSegmentIndex}');
+        }
+      }
+    }
+    
     // Check if jumping to delivery point (segment 1) and update status
     final isJumpingToDelivery = _viewModel.currentSegmentIndex == 1;
     debugPrint('📊 isJumpingToDelivery: $isJumpingToDelivery (currentSegmentIndex: ${_viewModel.currentSegmentIndex})');
@@ -2194,15 +2322,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       debugPrint('📍 Sending new skip location to server:');
       debugPrint('   - Lat: ${_viewModel.currentLocation!.latitude}');
       debugPrint('   - Lng: ${_viewModel.currentLocation!.longitude}');
+      debugPrint('   - Bearing: ${_viewModel.currentBearing}');
+      debugPrint('   - Speed: ${_viewModel.currentSpeed}');
+      debugPrint('   - Segment index: ${_viewModel.currentSegmentIndex}');
       
       _globalLocationManager.sendLocationUpdate(
         _viewModel.currentLocation!.latitude,
         _viewModel.currentLocation!.longitude,
         bearing: _viewModel.currentBearing,
         speed: _viewModel.currentSpeed,
+        segmentIndex: _viewModel.currentSegmentIndex,
       );
       
-      debugPrint('✅ Skip location sent to server');
+      debugPrint('✅ Skip location sent to server via GlobalLocationManager.sendLocationUpdate()');
+      debugPrint('   - GlobalLocationManager.isGlobalTrackingActive: ${_globalLocationManager.isGlobalTrackingActive}');
+      debugPrint('   - GlobalLocationManager.isPrimaryDriver: ${_globalLocationManager.isPrimaryDriver}');
     }
     
     // Redraw routes to update current segment

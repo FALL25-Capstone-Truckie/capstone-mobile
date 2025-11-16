@@ -180,15 +180,41 @@ class NavigationViewModel extends ChangeNotifier {
         return;
       }
 
-      // Select the active journey (prefer ACTIVE status, fallback to first)
-      JourneyHistory journeyHistory;
-      try {
-        journeyHistory = vehicleAssignment.journeyHistories.firstWhere(
-          (j) => j.status == 'ACTIVE',
-        );
-      } catch (e) {
-        journeyHistory = vehicleAssignment.journeyHistories.first;
+      // 🆕 Always use the LATEST ACTIVE journey history (sort by createdAt DESC)
+      // Special handling for RETURN journeys: only use if ACTIVE (customer paid)
+      final sortedJourneys = List<JourneyHistory>.from(vehicleAssignment.journeyHistories)
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      // Find the latest journey that is usable
+      JourneyHistory? journeyHistory;
+      for (final journey in sortedJourneys) {
+        // For RETURN journeys, only use if ACTIVE (customer paid)
+        if (journey.journeyType == 'RETURN') {
+          if (journey.status == 'ACTIVE') {
+            journeyHistory = journey;
+            debugPrint('✅ Using ACTIVE RETURN journey: ${journey.journeyName}');
+            break;
+          } else {
+            debugPrint('⏭️ Skipping INACTIVE RETURN journey: ${journey.journeyName} (status: ${journey.status})');
+            continue; // Skip INACTIVE return journey, check next one
+          }
+        } else {
+          // For non-RETURN journeys, use regardless of status
+          journeyHistory = journey;
+          debugPrint('✅ Using journey: ${journey.journeyName} (${journey.journeyType})');
+          break;
+        }
       }
+      
+      if (journeyHistory == null) {
+        debugPrint('❌ No usable journey found (all RETURN journeys are INACTIVE)');
+        return;
+      }
+      
+      debugPrint('📍 Selected journey history: ${journeyHistory.journeyName} (${journeyHistory.journeyType})');
+      debugPrint('   - Created at: ${journeyHistory.createdAt}');
+      debugPrint('   - Status: ${journeyHistory.status}');
+      
       final segments = journeyHistory.journeySegments;
 
       if (segments.isEmpty) {

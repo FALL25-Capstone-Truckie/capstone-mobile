@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:vietmap_flutter_gl/vietmap_flutter_gl.dart';
 
@@ -689,67 +690,105 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               );
             },
             borderRadius: BorderRadius.circular(12),
-            child: Padding(
+            child: Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   // Header
-                  Row(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _getIssueColor(issue.issueCategory).withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.warning_amber_rounded,
-                          color: _getIssueColor(issue.issueCategory),
-                          size: 24,
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _getIssueColor(issue.issueCategory).withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.warning_amber_rounded,
+                              color: _getIssueColor(issue.issueCategory),
+                              size: 24,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  issue.issueTypeName ?? 'Sự cố',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (issue.reportedAt != null) ...[
+                                  SizedBox(height: 4),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.access_time,
+                                        size: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                      SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          'Báo cáo: ${_formatDateTime(issue.reportedAt!)}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey[600],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                            color: Colors.grey[400],
+                          ),
+                        ],
                       ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              issue.issueTypeName ?? 'Sự cố',
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _getIssueStatusColor(issue.status),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _getIssueStatusLabel(issue.status),
                               style: TextStyle(
-                                fontSize: 16,
+                                color: Colors.white,
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _getIssueStatusColor(issue.status),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _getIssueStatusLabel(issue.status),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
                           ),
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: Colors.grey[400],
+                        ],
                       ),
                     ],
                   ),
                   SizedBox(height: 16),
                   // Description
-                  if (issue.description != null) ...[
+                  if (issue.description != null && issue.description!.isNotEmpty) ...[
                     Text(
                       'Mô tả:',
                       style: TextStyle(
@@ -758,11 +797,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       ),
                     ),
                     SizedBox(height: 4),
-                    Text(
-                      issue.description!,
-                      style: TextStyle(fontSize: 14),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                        issue.description!,
+                        style: TextStyle(fontSize: 14),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: true,
+                      ),
                     ),
                     SizedBox(height: 12),
                   ],
@@ -832,5 +875,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       default:
         return status ?? 'Không rõ';
     }
+  }
+
+  /// Format DateTime to Vietnamese format (dd/MM/yyyy HH:mm)
+  String _formatDateTime(DateTime dateTime) {
+    return DateFormat('dd/MM/yyyy HH:mm', 'vi').format(dateTime);
   }
 }

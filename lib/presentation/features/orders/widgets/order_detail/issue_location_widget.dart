@@ -88,6 +88,8 @@ class _IssueLocationWidgetState extends State<IssueLocationWidget> {
               fontSize: 12,
               color: AppColors.textSecondary,
             ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

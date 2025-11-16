@@ -181,10 +181,10 @@ class EnhancedLocationTrackingService {
       },
     );
 
-    // Timeout
-    Timer(const Duration(seconds: 10), () {
+    // Timeout - reduced from 10s to 5s for better UX
+    Timer(const Duration(seconds: 5), () {
       if (!connectionCompleter.isCompleted) {
-        debugPrint('⏱️ WebSocket connection timeout');
+        debugPrint('⏱️ WebSocket connection timeout after 5s');
         connectionCompleter.complete(false);
       }
     });

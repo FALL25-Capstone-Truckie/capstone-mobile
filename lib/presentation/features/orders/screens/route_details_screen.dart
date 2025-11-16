@@ -738,6 +738,46 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
               }
             }
             
+            // Get icon and color based on issue category
+            IconData issueIcon = Icons.warning_amber_rounded;
+            Color issueColor = Colors.red;
+            
+            switch (issue.issueCategory) {
+              case 'ORDER_REJECTION':
+                issueIcon = Icons.inventory_2;
+                issueColor = Colors.red;
+                break;
+              case 'SEAL_REPLACEMENT':
+                issueIcon = Icons.lock;
+                issueColor = Colors.orange;
+                break;
+              case 'DAMAGE':
+              case 'CARGO_ISSUE':
+              case 'MISSING_ITEMS':
+              case 'WRONG_ITEMS':
+                issueIcon = Icons.warning_amber_rounded;
+                issueColor = Colors.orange;
+                break;
+              case 'PENALTY':
+                issueIcon = Icons.local_police;
+                issueColor = Colors.red[700]!;
+                break;
+              case 'ACCIDENT':
+              case 'VEHICLE_BREAKDOWN':
+                issueIcon = Icons.build;
+                issueColor = Colors.red;
+                break;
+              case 'WEATHER':
+                issueIcon = Icons.cloud;
+                issueColor = Colors.blue;
+                break;
+              case 'GENERAL':
+              default:
+                issueIcon = Icons.warning_amber_rounded;
+                issueColor = Colors.orange;
+                break;
+            }
+            
             _waypointMarkers.add(
               Marker(
                 child: Column(
@@ -745,20 +785,20 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                   children: [
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.red,
+                        color: issueColor,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 3),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.red.withOpacity(0.5),
+                            color: issueColor.withOpacity(0.5),
                             blurRadius: 8,
                             spreadRadius: 2,
                           ),
                         ],
                       ),
                       padding: const EdgeInsets.all(8),
-                      child: const Icon(
-                        Icons.warning_amber_rounded,
+                      child: Icon(
+                        issueIcon,
                         color: Colors.white,
                         size: 20,
                       ),
@@ -767,7 +807,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
                       constraints: BoxConstraints(maxWidth: 140),
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.red,
+                        color: issueColor,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Column(
