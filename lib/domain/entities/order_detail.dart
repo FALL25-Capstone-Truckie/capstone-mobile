@@ -221,7 +221,7 @@ class JourneySegment extends Equatable {
   final double? startLongitude; // Nullable for return journey segments
   final double? endLatitude; // Nullable for return journey segments
   final double? endLongitude; // Nullable for return journey segments
-  final int distanceMeters;
+  final double distanceKilometers;
   final String? pathCoordinatesJson; // Nullable for return journey segments
   final String status;
   final DateTime createdAt;
@@ -236,7 +236,7 @@ class JourneySegment extends Equatable {
     this.startLongitude,
     this.endLatitude,
     this.endLongitude,
-    required this.distanceMeters,
+    required this.distanceKilometers,
     this.pathCoordinatesJson,
     required this.status,
     required this.createdAt,
@@ -253,7 +253,7 @@ class JourneySegment extends Equatable {
     startLongitude,
     endLatitude,
     endLongitude,
-    distanceMeters,
+    distanceKilometers,
     pathCoordinatesJson,
     status,
     createdAt,

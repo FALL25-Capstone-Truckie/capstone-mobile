@@ -408,7 +408,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
     final currentSegment = journeySegments[_selectedSegmentIndex];
 
     // Format distance in km
-    final distanceKm = (currentSegment.distanceMeters).toStringAsFixed(2);
+    final distanceKm = (currentSegment.distanceKilometers).toStringAsFixed(2);
 
     // Chuyển đổi tên điểm đầu/cuối sang tiếng Việt
     String startPointName = currentSegment.startPointName;

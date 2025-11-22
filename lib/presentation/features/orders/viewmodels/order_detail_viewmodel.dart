@@ -49,6 +49,9 @@ class OrderDetailViewModel extends BaseViewModel {
   String _odometerUploadError = '';
   String? _fuelConsumptionId;
   double? _odometerReadingAtEnd; // Track if final odometer has been uploaded
+  
+  // Concurrent operation lock to prevent duplicate start
+  bool _isStartingTrip = false;
 
   OrderDetailState get state => _state;
   StartDeliveryState get startDeliveryState => _startDeliveryState;
@@ -485,27 +488,88 @@ class OrderDetailViewModel extends BaseViewModel {
     return vehicleAssignment?.id;
   }
 
+  /// Validate all required data before starting trip
+  /// Returns error message if validation fails, null if success
+  String? _validateTripStartData() {
+    // 1. Check order data loaded
+    if (_orderWithDetails == null) {
+      return 'Chưa tải được thông tin đơn hàng. Vui lòng thử lại.';
+    }
+    
+    // 2. Check vehicle assignment exists
+    final vehicleAssignment = getCurrentUserVehicleAssignment();
+    if (vehicleAssignment == null) {
+      return 'Không tìm thấy thông tin phân công xe.';
+    }
+    
+    // 3. Check phone number (for WebSocket subscription)
+    final phoneNumber = _getCurrentUserPhoneNumber();
+    if (phoneNumber == null) {
+      return 'Không tìm thấy thông tin tài xế.';
+    }
+    
+    return null; // Validation success
+  }
+  
+  /// Prepare image for upload (just return original)
+  Future<File> _prepareOdometerImage(File originalImage) async {
+    try {
+      // Check original file size for logging only
+      final originalSize = await originalImage.length();
+      debugPrint('📷 Image size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
+      
+      // Return original image without compression
+      return originalImage;
+    } catch (e) {
+      debugPrint('❌ Image preparation error: $e');
+      // Fallback to original on any error
+      return originalImage;
+    }
+  }
+
   Future<bool> startDelivery({
     required Decimal odometerReading,
     required File odometerImage,
   }) async {
-    final vehicleAssignmentId = getVehicleAssignmentId();
-    if (vehicleAssignmentId == null) {
-      _startDeliveryState = StartDeliveryState.error;
-      _startDeliveryErrorMessage = 'Không tìm thấy thông tin phương tiện';
-      notifyListeners();
+    // 🔒 Prevent concurrent start attempts
+    if (_isStartingTrip) {
+      debugPrint('⚠️ Trip start already in progress, ignoring duplicate call');
       return false;
     }
-
-    _startDeliveryState = StartDeliveryState.loading;
-    notifyListeners();
-
+    
+    _isStartingTrip = true;
     
     try {
+      // ✅ Validate all required data first
+      final validationError = _validateTripStartData();
+      if (validationError != null) {
+        _startDeliveryState = StartDeliveryState.error;
+        _startDeliveryErrorMessage = validationError;
+        notifyListeners();
+        return false;
+      }
+      
+      final vehicleAssignmentId = getVehicleAssignmentId();
+      if (vehicleAssignmentId == null) {
+        _startDeliveryState = StartDeliveryState.error;
+        _startDeliveryErrorMessage = 'Không tìm thấy thông tin phương tiện';
+        notifyListeners();
+        return false;
+      }
+
+      _startDeliveryState = StartDeliveryState.loading;
+      notifyListeners();
+      
+      // 📷 Prepare image for upload
+      debugPrint('📷 Preparing odometer image...');
+      final preparedImage = await _prepareOdometerImage(odometerImage);
+      debugPrint('✅ Image ready for upload');
+
+      
       final result = await _createVehicleFuelConsumptionUseCase(
         vehicleAssignmentId: vehicleAssignmentId,
         odometerReadingAtStart: odometerReading,
-        odometerAtStartImage: odometerImage,
+        odometerAtStartImage: preparedImage,
       );
 
       return result.fold(
@@ -516,6 +580,7 @@ class OrderDetailViewModel extends BaseViewModel {
           final shouldRetry = await handleUnauthorizedError(failure.message);
           if (shouldRetry) {
             // Nếu refresh token thành công, thử lại
+            _isStartingTrip = false; // Reset lock before retry
             return startDelivery(
               odometerReading: odometerReading,
               odometerImage: odometerImage,
@@ -536,12 +601,16 @@ class OrderDetailViewModel extends BaseViewModel {
       _startDeliveryErrorMessage = 'Lỗi không xác định: $e';
       notifyListeners();
       return false;
+    } finally {
+      // 🔓 Always release lock
+      _isStartingTrip = false;
     }
   }
-
+  
   void resetStartDeliveryState() {
     _startDeliveryState = StartDeliveryState.initial;
     _startDeliveryErrorMessage = '';
+    _isStartingTrip = false; // Also reset lock
     notifyListeners();
   }
 

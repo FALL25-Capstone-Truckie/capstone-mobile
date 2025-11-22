@@ -54,6 +54,7 @@ import '../../core/services/token_storage_service.dart';
 import '../../core/services/vietmap_service.dart';
 import '../../core/services/global_location_manager.dart';
 import '../../core/services/navigation_state_service.dart';
+import '../../core/services/issue_resolution_handler.dart';
 
 final GetIt getIt = GetIt.instance;
 
@@ -83,6 +84,15 @@ Future<void> setupServiceLocator() async {
 
     // Register NotificationService as singleton
     getIt.registerSingleton<NotificationService>(NotificationService());
+    
+    // Register IssueResolutionHandler for hybrid notification handling
+    getIt.registerFactory<IssueResolutionHandler>(
+      () => IssueResolutionHandler(
+        getIt<NotificationService>(),
+        getIt<IssueRepository>(),
+      ),
+    );
+    
     // WebSocket services
     // Sử dụng mock service cho testing - đổi thành false để sử dụng dịch vụ thật
     final bool useMockWebSocket = false;

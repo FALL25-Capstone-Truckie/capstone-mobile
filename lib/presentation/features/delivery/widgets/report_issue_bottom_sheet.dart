@@ -10,18 +10,22 @@ import '../../../theme/app_text_styles.dart';
 import 'report_seal_replacement_bottom_sheet.dart';
 import 'damage_report_bottom_sheet.dart';
 import 'penalty_report_bottom_sheet.dart';
+import 'report_reroute_bottom_sheet.dart';
+import '../viewmodels/navigation_viewmodel.dart';
 
 /// Bottom sheet widget để driver báo cáo issue
 class ReportIssueBottomSheet extends StatefulWidget {
   final String vehicleAssignmentId;
   final LatLng? currentLocation;
   final OrderWithDetails? orderWithDetails;
+  final NavigationViewModel? navigationViewModel;
 
   const ReportIssueBottomSheet({
     super.key,
     required this.vehicleAssignmentId,
     this.currentLocation,
     this.orderWithDetails,
+    this.navigationViewModel,
   });
 
   @override
@@ -174,16 +178,40 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
       if (result != null && mounted) {
       }
     } else if (selectedType.issueCategory == IssueCategory.reroute) {
-      // TODO: Reroute feature not yet implemented in mobile
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tính năng tái định tuyến đang được phát triển'),
-          backgroundColor: Colors.orange,
+      // Check if we have order details and navigation view model for segment selection
+      if (widget.orderWithDetails == null || widget.navigationViewModel == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không tìm thấy thông tin điều hướng'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Close current bottom sheet
+      Navigator.pop(context);
+      
+      // Show reroute bottom sheet
+      final result = await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => ReportRerouteBottomSheet(
+          vehicleAssignmentId: widget.vehicleAssignmentId,
+          issueTypeId: selectedType.id,
+          currentLocation: widget.currentLocation,
+          orderWithDetails: widget.orderWithDetails!,
+          navigationViewModel: widget.navigationViewModel!,
         ),
       );
-      return;
+
+      // If result is true (reroute reported successfully), return success
+      if (result == true) {
+        // Parent will handle refreshing data
+      }
     } else {
-      // For other categories, just update selected ID
+      // For other categories, just update selected ID  
       setState(() {
         _selectedIssueTypeId = issueTypeId;
       });

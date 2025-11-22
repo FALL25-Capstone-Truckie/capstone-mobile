@@ -67,6 +67,9 @@ class NotificationService {
   
   final StreamController<Map<String, dynamic>> _paymentTimeoutController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get paymentTimeoutStream => _paymentTimeoutController.stream;
+  
+  final StreamController<Map<String, dynamic>> _rerouteResolvedController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get rerouteResolvedStream => _rerouteResolvedController.stream;
 
   /// Initialize flutter_local_notifications
   Future<void> _initializeLocalNotifications() async {
@@ -400,6 +403,10 @@ class NotificationService {
         break;
       case 'ORDER_REJECTION_RESOLVED':
         _handleOrderRejectionResolved(notification);
+        break;
+      case 'REROUTE_RESOLVED':
+        print('🔄 Dispatching to _handleRerouteResolved');
+        _handleRerouteResolved(notification);
         break;
       default:
         
@@ -1077,6 +1084,107 @@ class NotificationService {
     });
   }
   
+  /// Handle reroute resolved notification
+  /// Staff created new journey, driver should fetch and continue with new route
+  /// Pattern 1: Info-only notification
+  /// Flow: Confirm modal → Fetch order → Re-render map → Auto resume simulation
+  void _handleRerouteResolved(Map<String, dynamic> notification, {int retryCount = 0}) {
+    print('🔄 _handleRerouteResolved called');
+    print('   Notification: $notification');
+    
+    final issueId = notification['issueId'] as String?;
+    final orderId = notification['orderId'] as String?;
+    
+    print('   Issue ID: $issueId');
+    print('   Order ID: $orderId');
+    
+    // Play sound for reroute resolved notification
+    SoundUtils.playOrderRejectionResolvedSound(); // Reuse similar sound
+    
+    // Show dialog to driver
+    _showRerouteResolvedNotification(notification);
+  }
+  
+  /// Show reroute resolved notification dialog
+  /// Pattern 1: Info-only notification - fetch order + re-render map + auto-resume
+  void _showRerouteResolvedNotification(Map<String, dynamic> notification, {int retryCount = 0}) {
+    if (_navigatorKey == null || _navigatorKey!.currentContext == null) {
+      print('⚠️ Navigator key or context is null, retrying...');
+      
+      // CRITICAL: Retry after a delay to wait for MaterialApp to mount
+      if (retryCount < 5) {
+        print('🔄 Will retry in 500ms (attempt ${retryCount + 1}/5)');
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _showRerouteResolvedNotification(notification, retryCount: retryCount + 1);
+        });
+      } else {
+        print('❌ Max retries reached for reroute resolved notification');
+      }
+      return;
+    }
+
+    final issueId = notification['issueId'] as String?;
+    final orderId = notification['orderId'] as String?;
+    
+    if (issueId == null || orderId == null) {
+      print('❌ Missing issueId or orderId in reroute notification');
+      return;
+    }
+    
+    // Create unique notification ID
+    final timestamp = notification['timestamp'] ?? DateTime.now().toIso8601String();
+    final notificationId = '$issueId-reroute-resolved-$timestamp';
+    
+    // Check if this notification was already shown
+    if (_lastNotificationId == notificationId || _shownNotifications.contains(notificationId)) {
+      print('⚠️ Reroute notification already shown: $notificationId');
+      return;
+    }
+    
+    // Mark as shown
+    _lastNotificationId = notificationId;
+    _shownNotifications.add(notificationId);
+    
+    // Clean up old notifications (keep only last 10)
+    if (_shownNotifications.length > 10) {
+      final toRemove = _shownNotifications.length - 10;
+      _shownNotifications.removeAll(_shownNotifications.take(toRemove));
+    }
+    
+    print('✅ Reroute notification marked as shown: $notificationId');
+
+    // Check current route
+    final currentRoute = _getCurrentRouteName();
+    final isOnNavigationScreen = currentRoute == '/navigation';
+    
+    print('   Current route: $currentRoute');
+    print('   Is on navigation screen: $isOnNavigationScreen');
+    
+    // ✅ CRITICAL: Check if stream has listeners before emitting
+    if (!_rerouteResolvedController.hasListener) {
+      print('⚠️ Reroute resolved: No listeners yet, scheduling retry...');
+      
+      if (retryCount < 5) {
+        print('🔄 Will retry in 300ms (attempt ${retryCount + 1}/5)');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          _showRerouteResolvedNotification(notification, retryCount: retryCount + 1);
+        });
+      } else {
+        print('❌ Max retries reached, no listeners available');
+      }
+      return;
+    }
+    
+    // ✅ CRITICAL: Emit event to stream instead of showing dialog directly
+    print('📢 Emitting reroute resolved event to stream');
+    _rerouteResolvedController.add({
+      'issueId': issueId,
+      'orderId': orderId,
+      'isOnNavigationScreen': isOnNavigationScreen,
+    });
+    print('✅ Reroute resolved event emitted successfully');
+  }
+  
   /// Trigger order list refresh
   /// Note: Since OrderListViewModel is registered as Factory, we cannot directly refresh
   /// The UI will auto-refresh when user navigates to orders screen via Provider
@@ -1302,5 +1410,10 @@ class NotificationService {
     _notificationController.close();
     _refreshController.close();
     _showSealBottomSheetController.close();
+    _sealAssignmentController.close();
+    _damageResolvedController.close();
+    _orderRejectionResolvedController.close();
+    _paymentTimeoutController.close();
+    _rerouteResolvedController.close();
   }
 }

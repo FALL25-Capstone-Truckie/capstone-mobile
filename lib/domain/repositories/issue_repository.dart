@@ -95,16 +95,15 @@ abstract class IssueRepository {
   });
 
   // ===== REROUTE flow methods =====
-  // TODO: Implement reroute feature - temporarily commented out for build
   
-  // /// Report reroute issue when driver encounters problem on journey segment (Driver)
-  // Future<Issue> reportRerouteIssue({
-  //   required String vehicleAssignmentId,
-  //   required String issueTypeId,
-  //   required String affectedSegmentId,
-  //   required String description,
-  //   double? locationLatitude,
-  //   double? locationLongitude,
-  //   List<dynamic>? images, // Optional images for reroute
-  // });
+  /// Report reroute issue when driver encounters problem on journey segment (Driver)
+  Future<Issue> reportRerouteIssue({
+    required String vehicleAssignmentId,
+    required String issueTypeId,
+    required String affectedSegmentId,
+    required String description,
+    double? locationLatitude,
+    double? locationLongitude,
+    List<dynamic>? images, // Optional images for reroute
+  });
 }

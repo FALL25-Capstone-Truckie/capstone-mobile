@@ -21,7 +21,7 @@ import '../viewmodels/navigation_viewmodel.dart';
 import '../widgets/map/image_based_3d_truck_marker.dart';
 import '../widgets/map/vehicle_navigation_marker.dart';
 import '../widgets/map/static_vehicle_marker.dart';
-import '../widgets/report_issue_bottom_sheet.dart';
+import '../widgets/issue_type_selection_bottom_sheet.dart';
 import '../widgets/report_seal_issue_bottom_sheet.dart';
 import '../../../../core/services/vietmap_service.dart';
 import '../widgets/pending_seal_replacement_banner.dart';
@@ -59,6 +59,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   bool _isMapReady = false;
   bool _isMapInitialized = false;
   bool _isLoadingMapStyle = true;
+  
+  // ✅ Unified loading state - ensures ALL components are ready before showing UI
+  bool get _isFullyReady => 
+      !_isInitializing && 
+      !_isLoadingMapStyle && 
+      _isMapReady && 
+      _isMapInitialized && 
+      _initializationError == null;
   bool _isFollowingUser = true;
   bool _isConnectingWebSocket = false;
   bool _isSimulating = false;
@@ -86,6 +94,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   // Refresh stream subscription
   StreamSubscription<void>? _refreshSubscription;
   
+  // Map loading timeout mechanism
+  Timer? _mapLoadingTimeoutTimer;
+  static const Duration _mapLoadingTimeout = Duration(seconds: 30);
+  
   // Seal bottom sheet stream subscription
   StreamSubscription<String>? _sealBottomSheetSubscription;
   
@@ -95,15 +107,17 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   // Track if return payment dialog is showing to prevent duplicates
   bool _isReturnPaymentDialogShowing = false;
   
-  // ✅ NEW: Stream subscriptions for notification dialogs (3 only - seal assignment handled by OrderDetailScreen)
+  // ✅ NEW: Stream subscriptions for notification dialogs (4 only - seal assignment handled by OrderDetailScreen)
   StreamSubscription<Map<String, dynamic>>? _damageResolvedSubscription;
   StreamSubscription<Map<String, dynamic>>? _orderRejectionResolvedSubscription;
   StreamSubscription<Map<String, dynamic>>? _paymentTimeoutSubscription;
+  StreamSubscription<Map<String, dynamic>>? _rerouteResolvedSubscription;
   
-  // Track dialog showing states to prevent duplicates (3 only)
+  // Track dialog showing states to prevent duplicates (4 only)
   bool _isDamageResolvedDialogShowing = false;
   bool _isOrderRejectionResolvedDialogShowing = false;
   bool _isPaymentTimeoutDialogShowing = false;
+  bool _isRerouteResolvedDialogShowing = false;
   
   // Fuel consumption state
   String? _fuelConsumptionId;
@@ -150,12 +164,30 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     _globalLocationManager.registerScreen('NavigationScreen');
     
     _loadMapStyle();
+    
+    // NOTE: Timeout mechanism disabled - map renders asynchronously without blocking UI
+    // _startMapLoadingTimeout();
 
     // 🆕 Subscribe to refresh stream from NotificationService
     final notificationService = getIt<NotificationService>();
     _refreshSubscription = notificationService.refreshStream.listen((_) async {
+      // 🔄 CRITICAL: Preserve current segment index before reload (for reroute)
+      final previousSegmentIndex = _viewModel.currentSegmentIndex;
+      final wasSimulating = _isSimulating;
+      
+      print('🔄 Refreshing route - Previous segment: $previousSegmentIndex, Was simulating: $wasSimulating');
+      
       // 🆕 Fetch latest order to get newest journey history (for return routes, reroutes)
       await _loadOrderDetails();
+      
+      // 🎯 CRITICAL: Restore current segment index after reload
+      if (previousSegmentIndex < _viewModel.routeSegments.length) {
+        _viewModel.setCurrentSegmentIndex(previousSegmentIndex);
+        print('✅ Restored segment index: $previousSegmentIndex');
+      } else {
+        print('⚠️ Previous segment index $previousSegmentIndex out of bounds, keeping current: ${_viewModel.currentSegmentIndex}');
+      }
+      
       // Re-draw routes with new journey data
       if (_viewModel.routeSegments.isNotEmpty && _isMapReady) {
         _drawRoutes();
@@ -164,7 +196,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Fetch pending seal replacements
       await _fetchPendingSealReplacements();
       // Auto-resume simulation if no pending seals
-      if (_pendingSealReplacements.isEmpty && widget.isSimulationMode) {
+      if (_pendingSealReplacements.isEmpty && widget.isSimulationMode && wasSimulating) {
+        print('🔄 Auto-resuming simulation at segment ${_viewModel.currentSegmentIndex}');
         _autoResumeSimulation();
       } else {
       }
@@ -542,6 +575,75 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           ],
         ),
       ).whenComplete(() => _isPaymentTimeoutDialogShowing = false);
+    });
+    
+    // ✅ NEW: Subscribe to reroute resolved stream
+    _rerouteResolvedSubscription = notificationService.rerouteResolvedStream.listen((data) async {
+      if (!mounted || _isRerouteResolvedDialogShowing) return;
+      
+      _isRerouteResolvedDialogShowing = true;
+      final issueId = data['issueId'] as String?;
+      final orderId = data['orderId'] as String?;
+      final isOnNavigationScreen = data['isOnNavigationScreen'] as bool? ?? false;
+      
+      print('🛣️ Reroute resolved notification received');
+      print('   Issue ID: $issueId');
+      print('   Order ID: $orderId');
+      print('   Is on navigation screen: $isOnNavigationScreen');
+      
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          contentPadding: const EdgeInsets.all(24),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.route, color: Colors.green.shade600, size: 48),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '🛣️ Lộ trình mới đã sẵn sàng',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Nhân viên đã tạo lộ trình mới để tránh khu vực gặp sự cố. Vui lòng kiểm tra và tiếp tục theo lộ trình mới.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, height: 1.5),
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  // Fetch new route and resume
+                  Future.delayed(const Duration(milliseconds: 300), () async {
+                    await _fetchNewRouteAndResume();
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Xem lộ trình', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
+        ),
+      ).whenComplete(() => _isRerouteResolvedDialogShowing = false);
     });
 
     // Check if viewModel is already simulating (returning to active simulation)
@@ -1280,6 +1382,100 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }
   }
 
+  /// Fetch new route and resume simulation after reroute
+  /// Staff has created new journey, fetch latest active journey and render on map
+  Future<void> _fetchNewRouteAndResume() async {
+    try {
+      print('🔄 Fetching new rerouted journey...');
+      
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text('Đang tải lộ trình mới...'),
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      // Fetch order to get latest journey history
+      final orderId = widget.orderId ?? _viewModel.orderWithDetails?.id;
+      if (orderId == null) {
+        throw Exception('Không tìm thấy ID đơn hàng');
+      }
+      
+      print('   Fetching order: $orderId');
+      
+      // Update order in viewModel first
+      await _viewModel.getOrderDetails(orderId);
+      
+      // Parse route from updated order
+      if (_viewModel.orderWithDetails != null) {
+        _viewModel.parseRouteFromOrder(_viewModel.orderWithDetails!);
+        
+        // Redraw routes on map
+        if (_viewModel.routeSegments.isNotEmpty) {
+          _drawRoutes();
+        }
+      }
+      
+      print('✅ New route rendered successfully');
+      
+      // Update UI
+      if (mounted) {
+        setState(() {
+          _isDataReady = true;
+        });
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã cập nhật lộ trình mới'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
+        // Auto-resume simulation if was running
+        if (_isSimulating) {
+          print('🔄 Auto-resuming simulation with new route...');
+          
+          // Wait a bit for map to render
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          // Resume simulation
+          _checkAndResumeAfterAction();
+        }
+      }
+    } catch (e) {
+      print('❌ Error fetching new route: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải lộ trình mới: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -1358,10 +1554,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // 🆕 Dispose return payment subscription
     _returnPaymentSubscription?.cancel();
     
-    // ✅ NEW: Dispose notification dialog subscriptions (3 only)
+    // ✅ NEW: Dispose notification dialog subscriptions (4 only)
     _damageResolvedSubscription?.cancel();
     _orderRejectionResolvedSubscription?.cancel();
     _paymentTimeoutSubscription?.cancel();
+    _rerouteResolvedSubscription?.cancel();
+    
+    // 🆕 Dispose map loading timeout timer
+    _mapLoadingTimeoutTimer?.cancel();
+    _mapLoadingTimeoutTimer = null;
     
     // Unregister this screen from GlobalLocationManager
     _globalLocationManager.unregisterScreen('NavigationScreen');
@@ -1396,34 +1597,79 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   /// 3. API call (fallback)
   /// 4. Local asset (last resort)
   Future<void> _loadMapStyle() async {
+    print('🗺️ [MapStyle] Starting to load map style...');
     setState(() {
       _isLoadingMapStyle = true;
     });
 
     try {
+      print('   🔍 [MapStyle] Fetching style from VietMapService...');
       final vietMapService = getIt<VietMapService>();
       
       // Try cache first (memory or SharedPreferences), then API
       final styleUrl = await vietMapService.getMobileStyleUrl();
+      print('   ✅ [MapStyle] Style URL loaded: ${styleUrl.substring(0, 50)}...');
       setState(() {
         _mapStyle = styleUrl; // Store URL, SDK handles loading
         _isLoadingMapStyle = false;
       });
+      print('   ✅ [MapStyle] Map style loading complete');
     } catch (e) {
+      print('   ⚠️ [MapStyle] VietMapService failed: $e');
       // Fallback 1: Try local asset file
       try {
+        print('   🔄 [MapStyle] Trying local asset fallback...');
         final style = await DefaultAssetBundle.of(
           context,
         ).loadString('assets/map_style/vietmap_style.json');
+        print('   ✅ [MapStyle] Local asset loaded (${style.length} chars)');
         setState(() {
           _mapStyle = style;
           _isLoadingMapStyle = false;
         });
       } catch (assetError) {
+        print('   ❌ [MapStyle] Local asset also failed: $assetError');
         setState(() {
           _isLoadingMapStyle = false;
         });
       }
+    }
+  }
+  
+  /// Start timeout mechanism for map loading
+  void _startMapLoadingTimeout() {
+    print('⏱️ [MapTimeout] Starting ${_mapLoadingTimeout.inSeconds}s timeout for map loading...');
+    
+    _mapLoadingTimeoutTimer = Timer(_mapLoadingTimeout, () {
+      if (!mounted || _isFullyReady) return;
+      
+      print('⚠️ [MapTimeout] Map loading timeout reached!');
+      print('   📊 Final state:');
+      print('      - Initializing: $_isInitializing');
+      print('      - Loading style: $_isLoadingMapStyle');
+      print('      - Map ready: $_isMapReady');
+      print('      - Map initialized: $_isMapInitialized');
+      print('      - Map controller: ${_mapController != null}');
+      
+      // Cancel timeout timer
+      _mapLoadingTimeoutTimer?.cancel();
+      _mapLoadingTimeoutTimer = null;
+      
+      // Show timeout error
+      if (mounted) {
+        setState(() {
+          _initializationError = 'Bản đồ không tải được sau ${_mapLoadingTimeout.inSeconds} giây. Vui lòng kiểm tra kết nối mạng và thử lại.';
+        });
+      }
+    });
+  }
+  
+  /// Cancel timeout mechanism when map is ready
+  void _cancelMapLoadingTimeout() {
+    if (_mapLoadingTimeoutTimer != null) {
+      print('✅ [MapTimeout] Map loaded successfully, cancelling timeout');
+      _mapLoadingTimeoutTimer!.cancel();
+      _mapLoadingTimeoutTimer = null;
     }
   }
 
@@ -1708,10 +1954,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _onMapCreated(VietmapController controller) {
+    print('🗺️ [MapCallback] onMapCreated called');
     _mapController = controller;
   }
 
   void _onMapRendered() {
+    print('🗺️ [MapCallback] onMapRendered called');
     setState(() {
       _isMapReady = true;
     });
@@ -1719,7 +1967,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // CRITICAL: Draw routes now that map is ready
     // This handles case where _onStyleLoaded() was called before _onMapRendered()
     if (_viewModel.routeSegments.isNotEmpty) {
-      
+      print('   🎨 Drawing routes from onMapRendered callback...');
       _drawRoutes();
     }
   }
@@ -1733,12 +1981,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _onStyleLoaded() {
+    print('🗺️ [MapCallback] onStyleLoaded called');
     setState(() {
       _isMapInitialized = true;
     });
 
     // Đảm bảo đã tải xong dữ liệu order trước khi vẽ route
     if (_viewModel.routeSegments.isEmpty) {
+      print('   📍 Route segments empty, loading order details...');
       _loadOrderDetails().then((_) {
         if (_viewModel.routeSegments.isNotEmpty) {
           // CRITICAL: Draw immediately on first load WITHOUT clearFirst
@@ -2813,32 +3063,47 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // PHASE 3: MAP & ROUTES READINESS CHECK
     // ============================================
     print('🗺️ Phase 3: Verifying map and routes readiness');
+    print('   📊 Map style loading: $_isLoadingMapStyle');
+    print('   📊 Map ready: $_isMapReady');
+    print('   📊 Map initialized: $_isMapInitialized');
     
-    // Wait for map to be fully ready (max 5 seconds)
+    // Wait for map style to finish loading first (max 2 seconds)
+    int styleWaitCount = 0;
+    while (_isLoadingMapStyle && styleWaitCount < 20) {
+      print('   ⏳ Waiting for map style... (attempt ${styleWaitCount + 1}/20)');
+      await Future.delayed(const Duration(milliseconds: 100));
+      styleWaitCount++;
+    }
+    
+    if (_isLoadingMapStyle) {
+      print('   ⚠️ Map style still loading after timeout, proceeding anyway...');
+    } else {
+      print('   ✓ Map style loaded');
+    }
+    
+    // Wait for map to be ready (max 2 seconds) - NON-BLOCKING
     int waitCount = 0;
-    while ((!_isMapReady || !_isMapInitialized) && waitCount < 50) {
-      print('   ⏳ Waiting for map ready... (attempt ${waitCount + 1}/50)');
+    while ((!_isMapReady || !_isMapInitialized) && waitCount < 20) {
+      print('   ⏳ Waiting for map ready... (attempt ${waitCount + 1}/20)');
       await Future.delayed(const Duration(milliseconds: 100));
       waitCount++;
     }
     
     if (!_isMapReady || !_isMapInitialized) {
-      print('❌ Map not ready after timeout');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bản đồ chưa sẵn sàng. Vui lòng thử lại.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
+      print('   ⚠️ Map not fully ready, but proceeding with simulation...');
+      // ✅ CRITICAL FIX: Don't block simulation - map will render asynchronously
+      // Routes will be drawn when map becomes ready via _onStyleLoaded callback
+    } else {
+      print('   ✓ Map ready and initialized');
     }
-    print('   ✓ Map ready and initialized');
     
-    // Ensure routes are drawn
+    // Try to draw routes (will succeed if map is ready, otherwise skip)
     print('   🎨 Drawing routes...');
-    _drawRoutes();
+    if (_isMapReady && _isMapInitialized) {
+      _drawRoutes();
+    } else {
+      print('   ⚠️ Skipping route drawing - will draw when map ready');
+    }
     
     // Wait for routes to render
     await Future.delayed(const Duration(milliseconds: 300));
@@ -3270,15 +3535,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       return;
     }
 
-    // Show bottom sheet for incident reporting
+    // Show bottom sheet for issue type selection (faster UX)
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => ReportIssueBottomSheet(
+      builder: (context) => IssueTypeSelectionBottomSheet(
         vehicleAssignmentId: vehicleAssignmentId,
         currentLocation: _viewModel.currentLocation,
         orderWithDetails: _viewModel.orderWithDetails,
+        navigationViewModel: _viewModel,
       ),
     ).then((result) {
       if (result == true && mounted) {
@@ -3936,7 +4202,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       return _buildErrorScreen();
     }
     
-    // ✅ Only show navigation UI when order is ready
+    // ✅ SIMPLE: Show navigation UI immediately after order loads (like route detail screen)
+    // Map will render asynchronously via callbacks - no need to block UI
     return WillPopScope(
       onWillPop: () async {
         // Use pushReplacement to go to OrderDetail
@@ -4083,27 +4350,33 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (!_isLoadingMapStyle)
-                      SizedBox.expand(
-                        child: VietmapGL(
-                          styleString: _getMapStyleString(),
-                          initialCameraPosition: _getInitialCameraPosition(),
-                          myLocationEnabled: false,
-                          myLocationTrackingMode:
-                              MyLocationTrackingMode.values[0],
-                          myLocationRenderMode: MyLocationRenderMode.values[0],
-                          trackCameraPosition: true,
-                          onMapCreated: _onMapCreated,
-                          onMapRenderedCallback: _onMapRendered,
-                          onStyleLoadedCallback: _onStyleLoaded,
-                          rotateGesturesEnabled: true,
-                          scrollGesturesEnabled: true,
-                          tiltGesturesEnabled: true,
-                          zoomGesturesEnabled: true,
-                          doubleClickZoomEnabled: true,
-                          cameraTargetBounds: CameraTargetBounds.unbounded,
-                        ),
-                      ),
+                    // ✅ CRITICAL FIX: Always build VietmapGL widget to ensure callbacks fire
+                    // Remove guard condition that was preventing callbacks when map style failed
+                    Builder(
+                      builder: (context) {
+                        print('🗺️ [MapWidget] Building VietmapGL widget (style loading: $_isLoadingMapStyle)');
+                        return SizedBox.expand(
+                          child: VietmapGL(
+                            styleString: _getMapStyleString(),
+                            initialCameraPosition: _getInitialCameraPosition(),
+                            myLocationEnabled: false,
+                            myLocationTrackingMode:
+                                MyLocationTrackingMode.values[0],
+                            myLocationRenderMode: MyLocationRenderMode.values[0],
+                            trackCameraPosition: true,
+                            onMapCreated: _onMapCreated,
+                            onMapRenderedCallback: _onMapRendered,
+                            onStyleLoadedCallback: _onStyleLoaded,
+                            rotateGesturesEnabled: true,
+                            scrollGesturesEnabled: true,
+                            tiltGesturesEnabled: true,
+                            zoomGesturesEnabled: true,
+                            doubleClickZoomEnabled: true,
+                            cameraTargetBounds: CameraTargetBounds.unbounded,
+                          ),
+                        );
+                      },
+                    ),
 
                     // Waypoint markers (static locations - use MarkerLayer)
                     if (_mapController != null &&
@@ -4534,6 +4807,110 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             ),
           ],
         ),
+      ),
+    );
+  }
+  
+  /// Build map loading screen with detailed progress indicators
+  Widget _buildMapLoadingScreen() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Đang tải bản đồ'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false, // Hide back button while loading
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 60,
+              height: 60,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Đang khởi tạo bản đồ dẫn đường...',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 32),
+            
+            // Progress indicators
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                children: [
+                  _buildProgressItem(
+                    'Tải style bản đồ',
+                    !_isLoadingMapStyle,
+                    Icons.map,
+                  ),
+                  _buildProgressItem(
+                    'Khởi tạo map widget',
+                    _mapController != null,
+                    Icons.map_outlined,
+                  ),
+                  _buildProgressItem(
+                    'Render bản đồ',
+                    _isMapReady,
+                    Icons.visibility,
+                  ),
+                  _buildProgressItem(
+                    'Tải style hoàn tất',
+                    _isMapInitialized,
+                    Icons.check_circle,
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 32),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 48),
+              child: Text(
+                'Vui lòng đợi trong giây lát. Bản đồ cần thời gian để tải và khởi tạo.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildProgressItem(String label, bool isCompleted, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            isCompleted ? Icons.check_circle : icon,
+            color: isCompleted ? Colors.green : Colors.grey[400],
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: isCompleted ? Colors.black87 : Colors.grey[600],
+                fontWeight: isCompleted ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

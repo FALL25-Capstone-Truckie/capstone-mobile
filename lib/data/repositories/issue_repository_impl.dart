@@ -395,4 +395,66 @@ class IssueRepositoryImpl implements IssueRepository {
       rethrow;
     }
   }
+
+  @override
+  Future<Issue> reportRerouteIssue({
+    required String vehicleAssignmentId,
+    required String issueTypeId,
+    required String affectedSegmentId,
+    required String description,
+    double? locationLatitude,
+    double? locationLongitude,
+    List<dynamic>? images,
+  }) async {
+    try {
+      // Prepare FormData for multipart/form-data request
+      final formData = FormData();
+
+      // Add required fields
+      formData.fields.add(MapEntry('vehicleAssignmentId', vehicleAssignmentId));
+      formData.fields.add(MapEntry('issueTypeId', issueTypeId));
+      formData.fields.add(MapEntry('affectedSegmentId', affectedSegmentId));
+      formData.fields.add(MapEntry('description', description));
+
+      // Add optional location
+      if (locationLatitude != null) {
+        formData.fields.add(MapEntry('locationLatitude', locationLatitude.toString()));
+      }
+      if (locationLongitude != null) {
+        formData.fields.add(MapEntry('locationLongitude', locationLongitude.toString()));
+      }
+
+      // Add optional images
+      if (images != null && images.isNotEmpty) {
+        for (var image in images) {
+          if (image is File) {
+            formData.files.add(
+              MapEntry(
+                'images',
+                await MultipartFile.fromFile(
+                  image.path,
+                  filename: image.path.split('/').last,
+                ),
+              ),
+            );
+          }
+        }
+      }
+
+      // Send request to backend
+      final response = await _apiClient.post(
+        '/issues/reroute',
+        data: formData,
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return Issue.fromJson(response.data['data']);
+      } else {
+        throw Exception('Failed to report reroute issue');
+      }
+    } catch (e) {
+      final friendlyMessage = ErrorMapper.mapToUserFriendlyMessage(e);
+      throw Exception('Không thể báo cáo tái định tuyến: $friendlyMessage');
+    }
+  }
 }

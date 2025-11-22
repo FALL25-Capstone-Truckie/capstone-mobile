@@ -191,7 +191,7 @@ class _RouteMapSectionState extends State<RouteMapSection>
     // Tính tổng khoảng cách
     double totalDistanceKm = journeySegments.fold(
       0.0,
-      (sum, segment) => sum + segment.distanceMeters,
+      (sum, segment) => sum + segment.distanceKilometers,
     );
 
     return Column(
@@ -227,7 +227,7 @@ class _RouteMapSectionState extends State<RouteMapSection>
 
   Widget _buildSegmentInfoItem(JourneySegment segment, Color color, int index) {
     // Format distance in km
-    final distanceKm = (segment.distanceMeters).toStringAsFixed(2);
+    final distanceKm = (segment.distanceKilometers).toStringAsFixed(2);
 
     // Chuyển đổi tên điểm đầu/cuối sang tiếng Việt
     String startPointName = segment.startPointName;
