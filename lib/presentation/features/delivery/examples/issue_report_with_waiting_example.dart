@@ -1,7 +1,7 @@
 /// ==========================================
 /// EXAMPLE: How to use IssueResolutionHandler
 /// ==========================================
-/// 
+///
 /// This example shows how to integrate the Hybrid Pattern
 /// (WebSocket + Polling) for consistent issue resolution handling
 
@@ -16,9 +16,9 @@ import '../../../../app/di/service_locator.dart';
 class RerouteReportExample {
   final IssueResolutionHandler _resolutionHandler;
   final IssueRepository _issueRepository;
-  
+
   RerouteReportExample(this._resolutionHandler, this._issueRepository);
-  
+
   Future<void> reportRerouteAndWait(BuildContext context) async {
     try {
       // 1️⃣ Report issue to backend
@@ -29,18 +29,17 @@ class RerouteReportExample {
         affectedSegmentId: 'zzz',
         description: 'Kẹt xe nghiêm trọng',
       );
-      
+
       print('✅ Issue reported: $issueId');
-      
+
       // 2️⃣ Show waiting dialog
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => WaitingForResolutionDialog(
-          issueCategory: IssueCategory.reroute,
-        ),
+        builder: (context) =>
+            WaitingForResolutionDialog(issueCategory: IssueCategory.reroute),
       );
-      
+
       // 3️⃣ Wait for resolution with dual listening
       final resolvedIssue = await _resolutionHandler.reportAndWaitForResolution(
         context: context,
@@ -49,7 +48,7 @@ class RerouteReportExample {
         onTimeout: () {
           // Show timeout dialog
           Navigator.of(context).pop(); // Close waiting dialog
-          
+
           showDialog(
             context: context,
             builder: (context) => ResolutionTimeoutDialog(
@@ -59,16 +58,18 @@ class RerouteReportExample {
           );
         },
       );
-      
+
       // 4️⃣ Handle resolution
       if (resolvedIssue != null) {
         Navigator.of(context).pop(); // Close waiting dialog
-        
+
         // Show success dialog
         await showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             contentPadding: const EdgeInsets.all(24),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -79,7 +80,11 @@ class RerouteReportExample {
                     color: Colors.green.shade50,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.route, color: Colors.green.shade600, size: 48),
+                  child: Icon(
+                    Icons.route,
+                    color: Colors.green.shade600,
+                    size: 48,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Text(
@@ -106,19 +111,23 @@ class RerouteReportExample {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green.shade600,
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                  child: const Text('Xem lộ trình', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  child: const Text(
+                    'Xem lộ trình',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
           ),
         );
       }
-      
     } catch (e) {
       print('❌ Error reporting reroute: $e');
-      
+
       // Show error dialog
       showDialog(
         context: context,
@@ -135,7 +144,7 @@ class RerouteReportExample {
       );
     }
   }
-  
+
   Future<void> _fetchNewRouteAndResume() async {
     print('🔄 Fetching new rerouted journey...');
     // Implement fetching new route logic
@@ -146,9 +155,9 @@ class RerouteReportExample {
 class DamageReportExample {
   final IssueResolutionHandler _resolutionHandler;
   final IssueRepository _issueRepository;
-  
+
   DamageReportExample(this._resolutionHandler, this._issueRepository);
-  
+
   Future<void> reportDamageAndWait(BuildContext context) async {
     try {
       // 1️⃣ Report damage
@@ -158,16 +167,15 @@ class DamageReportExample {
         description: 'Hàng hóa bị hư hỏng trong quá trình vận chuyển',
         images: ['image1.jpg', 'image2.jpg'],
       );
-      
+
       // 2️⃣ Show waiting dialog
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => WaitingForResolutionDialog(
-          issueCategory: IssueCategory.damage,
-        ),
+        builder: (context) =>
+            WaitingForResolutionDialog(issueCategory: IssueCategory.damage),
       );
-      
+
       // 3️⃣ Wait for staff resolution
       final resolvedIssue = await _resolutionHandler.reportAndWaitForResolution(
         context: context,
@@ -177,17 +185,16 @@ class DamageReportExample {
           Navigator.of(context).pop();
           showDialog(
             context: context,
-            builder: (context) => ResolutionTimeoutDialog(
-              issueCategory: IssueCategory.damage,
-            ),
+            builder: (context) =>
+                ResolutionTimeoutDialog(issueCategory: IssueCategory.damage),
           );
         },
       );
-      
+
       // 4️⃣ Handle resolution
       if (resolvedIssue != null) {
         Navigator.of(context).pop();
-        
+
         // Show resolved dialog
         await showDialog(
           context: context,
@@ -206,7 +213,6 @@ class DamageReportExample {
           ),
         );
       }
-      
     } catch (e) {
       print('❌ Error reporting damage: $e');
     }
@@ -216,12 +222,12 @@ class DamageReportExample {
 /// ==========================================
 /// INTEGRATION IN NAVIGATION SCREEN
 /// ==========================================
-/// 
+///
 /// Replace old WebSocket-only pattern with Hybrid pattern
 
 class NavigationScreenIntegrationExample {
   late IssueResolutionHandler _resolutionHandler;
-  
+
   void initState() {
     // Initialize resolution handler
     _resolutionHandler = IssueResolutionHandler(
@@ -229,21 +235,27 @@ class NavigationScreenIntegrationExample {
       getIt<IssueRepository>(),
     );
   }
-  
+
   void dispose() {
     // Clean up
     _resolutionHandler.dispose();
   }
-  
+
   /// Report reroute issue with hybrid pattern
   Future<void> handleReportReroute(BuildContext context) async {
-    final example = RerouteReportExample(_resolutionHandler, getIt<IssueRepository>());
+    final example = RerouteReportExample(
+      _resolutionHandler,
+      getIt<IssueRepository>(),
+    );
     await example.reportRerouteAndWait(context);
   }
-  
+
   /// Report damage issue with hybrid pattern
   Future<void> handleReportDamage(BuildContext context) async {
-    final example = DamageReportExample(_resolutionHandler, getIt<IssueRepository>());
+    final example = DamageReportExample(
+      _resolutionHandler,
+      getIt<IssueRepository>(),
+    );
     await example.reportDamageAndWait(context);
   }
 }

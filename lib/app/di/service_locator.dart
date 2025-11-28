@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,6 +16,13 @@ import '../../data/repositories/photo_completion_repository_impl.dart';
 import '../../data/repositories/vehicle_fuel_consumption_repository_impl.dart';
 import '../../data/repositories/issue_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
+// NEW: Import notification system dependencies
+import '../../data/datasources/notification_remote_data_source.dart';
+import '../../data/repositories/notification_repository_impl.dart';
+import '../../domain/repositories/notification_repository.dart';
+import '../../domain/usecases/notification/get_notifications_usecase.dart';
+import '../../domain/usecases/notification/mark_notification_read_usecase.dart';
+import '../../domain/usecases/notification/get_notification_stats_usecase.dart';
 import '../../domain/repositories/driver_repository.dart';
 import '../../domain/repositories/loading_documentation_repository.dart';
 import '../../domain/repositories/order_repository.dart';
@@ -41,6 +47,7 @@ import '../../domain/usecases/vehicle/create_vehicle_fuel_consumption_usecase.da
 import '../../presentation/features/account/viewmodels/account_viewmodel.dart';
 import '../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../presentation/features/delivery/viewmodels/navigation_viewmodel.dart';
+import '../../presentation/features/notification/viewmodels/notification_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/order_list_viewmodel.dart';
 import '../../presentation/features/orders/viewmodels/pre_delivery_documentation_viewmodel.dart';
@@ -49,6 +56,7 @@ import '../../core/services/vehicle_websocket_service.dart';
 import '../../core/services/mock_vehicle_websocket_service.dart';
 import '../../core/services/enhanced_location_tracking_service.dart';
 import '../../core/services/notification_service.dart';
+import '../../core/services/driver_notification_service.dart';
 import '../../core/services/location_queue_service.dart';
 import '../../core/services/token_storage_service.dart';
 import '../../core/services/vietmap_service.dart';
@@ -60,31 +68,53 @@ final GetIt getIt = GetIt.instance;
 
 Future<void> setupServiceLocator() async {
   try {
+    print('🚀 [ServiceLocator] setupServiceLocator called');
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Starting setup...');
+
     // Check if already setup to avoid duplicate registration on hot reload
     if (getIt.isRegistered<SharedPreferences>()) {
+      print(
+        '⚠️ [ServiceLocator] Other services already initialized, skipping...',
+      );
       return;
     }
-    
+
     // External dependencies
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Getting SharedPreferences...');
     final sharedPreferences = await SharedPreferences.getInstance();
+    print('✅ [ServiceLocator] ${DateTime.now()}: SharedPreferences obtained');
     getIt.registerSingleton<SharedPreferences>(sharedPreferences);
 
     // Token storage service
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Creating TokenStorageService...');
     final tokenStorageService = TokenStorageService();
+    print('✅ [ServiceLocator] ${DateTime.now()}: TokenStorageService created');
     getIt.registerSingleton<TokenStorageService>(tokenStorageService);
+    
     // API Client with base URL from constants
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Registering ApiClient...');
     getIt.registerLazySingleton<ApiClient>(
       () => ApiClient(baseUrl: ApiConstants.baseUrl),
     );
+    print('✅ [ServiceLocator] ${DateTime.now()}: ApiClient registered');
 
     // Register VietMapService
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Registering VietMapService...');
     getIt.registerLazySingleton<VietMapService>(
       () => VietMapService(apiClient: getIt<ApiClient>()),
     );
+    print('✅ [ServiceLocator] ${DateTime.now()}: VietMapService registered');
 
     // Register NotificationService as singleton
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Creating NotificationService...');
     getIt.registerSingleton<NotificationService>(NotificationService());
-    
+    print('✅ [ServiceLocator] ${DateTime.now()}: NotificationService registered');
+
+    // Register DriverNotificationService for REST API notifications
+    getIt.registerLazySingleton<DriverNotificationService>(
+      () => DriverNotificationService(getIt<NotificationRepository>()),
+    );
+
     // Register IssueResolutionHandler for hybrid notification handling
     getIt.registerFactory<IssueResolutionHandler>(
       () => IssueResolutionHandler(
@@ -92,7 +122,7 @@ Future<void> setupServiceLocator() async {
         getIt<IssueRepository>(),
       ),
     );
-    
+
     // WebSocket services
     // Sử dụng mock service cho testing - đổi thành false để sử dụng dịch vụ thật
     final bool useMockWebSocket = false;
@@ -106,7 +136,7 @@ Future<void> setupServiceLocator() async {
         () => VehicleWebSocketService(baseUrl: ApiConstants.wsBaseUrl),
       );
     }
-    
+
     // NotificationService handles all notifications (seal, return goods, damage, etc.)
     // No need for separate WebSocketService
 
@@ -134,13 +164,19 @@ Future<void> setupServiceLocator() async {
     // GlobalLocationManager now handles all location tracking directly
 
     // Initialize Global Location Manager (must be after dependencies)
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Initializing GlobalLocationManager...');
     GlobalLocationManager.initialize(
       getIt<EnhancedLocationTrackingService>(),
       getIt<NavigationStateService>(),
     );
+    print('✅ [ServiceLocator] ${DateTime.now()}: GlobalLocationManager initialized');
 
     // Register Global Location Manager instance
-    getIt.registerSingleton<GlobalLocationManager>(GlobalLocationManager.instance);
+    print('⏰ [ServiceLocator] ${DateTime.now()}: Registering GlobalLocationManager...');
+    getIt.registerSingleton<GlobalLocationManager>(
+      GlobalLocationManager.instance,
+    );
+    print('✅ [ServiceLocator] ${DateTime.now()}: GlobalLocationManager registered');
 
     // Data sources
     getIt.registerLazySingleton<AuthDataSourceImpl>(
@@ -167,145 +203,184 @@ Future<void> setupServiceLocator() async {
       () => VehicleFuelConsumptionDataSourceImpl(getIt<ApiClient>()),
     );
 
-  // Repositories
-  getIt.registerLazySingleton<AuthRepository>(
-    () => AuthRepositoryImpl(dataSource: getIt<AuthDataSourceImpl>()),
-  );
+    // Repositories
+    getIt.registerLazySingleton<AuthRepository>(
+      () => AuthRepositoryImpl(dataSource: getIt<AuthDataSourceImpl>()),
+    );
 
-  getIt.registerLazySingleton<DriverRepository>(
-    () => DriverRepositoryImpl(dataSource: getIt<DriverDataSourceImpl>()),
-  );
+    getIt.registerLazySingleton<DriverRepository>(
+      () => DriverRepositoryImpl(dataSource: getIt<DriverDataSourceImpl>()),
+    );
 
-  getIt.registerLazySingleton<LoadingDocumentationRepository>(
-    () => LoadingDocumentationRepositoryImpl(apiClient: getIt<ApiClient>()),
-  );
+    getIt.registerLazySingleton<LoadingDocumentationRepository>(
+      () => LoadingDocumentationRepositoryImpl(apiClient: getIt<ApiClient>()),
+    );
 
-  getIt.registerLazySingleton<OrderRepository>(
-    () => OrderRepositoryImpl(
-      apiClient: getIt<ApiClient>(),
-      orderDataSource: getIt<OrderDataSource>(),
-    ),
-  );
+    getIt.registerLazySingleton<OrderRepository>(
+      () => OrderRepositoryImpl(
+        apiClient: getIt<ApiClient>(),
+        orderDataSource: getIt<OrderDataSource>(),
+      ),
+    );
 
-  getIt.registerLazySingleton<VehicleRepository>(
-    () => VehicleRepositoryImpl(apiClient: getIt<ApiClient>()),
-  );
+    getIt.registerLazySingleton<VehicleRepository>(
+      () => VehicleRepositoryImpl(apiClient: getIt<ApiClient>()),
+    );
 
-  getIt.registerLazySingleton<PhotoCompletionRepository>(
-    () => PhotoCompletionRepositoryImpl(dataSource: getIt<PhotoCompletionDataSource>()),
-  );
+    getIt.registerLazySingleton<PhotoCompletionRepository>(
+      () => PhotoCompletionRepositoryImpl(
+        dataSource: getIt<PhotoCompletionDataSource>(),
+      ),
+    );
 
-  getIt.registerLazySingleton<VehicleFuelConsumptionRepository>(
-    () => VehicleFuelConsumptionRepositoryImpl(dataSource: getIt<VehicleFuelConsumptionDataSource>()),
-  );
+    getIt.registerLazySingleton<VehicleFuelConsumptionRepository>(
+      () => VehicleFuelConsumptionRepositoryImpl(
+        dataSource: getIt<VehicleFuelConsumptionDataSource>(),
+      ),
+    );
 
-  getIt.registerLazySingleton<IssueRepository>(
-    () => IssueRepositoryImpl(getIt<ApiClient>()),
-  );
+    getIt.registerLazySingleton<IssueRepository>(
+      () => IssueRepositoryImpl(getIt<ApiClient>()),
+    );
 
-  // Use cases
-  getIt.registerLazySingleton<LoginUseCase>(
-    () => LoginUseCase(getIt<AuthRepository>()),
-  );
+    // Notification data sources and repositories
+    getIt.registerLazySingleton<NotificationRemoteDataSource>(
+      () => NotificationRemoteDataSourceImpl(apiClient: getIt<ApiClient>()),
+    );
 
-  getIt.registerLazySingleton<LogoutUseCase>(
-    () => LogoutUseCase(getIt<AuthRepository>()),
-  );
+    getIt.registerLazySingleton<NotificationRepository>(
+      () => NotificationRepositoryImpl(
+        remoteDataSource: getIt<NotificationRemoteDataSource>(),
+      ),
+    );
 
-  getIt.registerLazySingleton<RefreshTokenUseCase>(
-    () => RefreshTokenUseCase(getIt<AuthRepository>()),
-  );
+    // Use cases
+    getIt.registerLazySingleton<LoginUseCase>(
+      () => LoginUseCase(getIt<AuthRepository>()),
+    );
 
-  getIt.registerLazySingleton<GetDriverInfoUseCase>(
-    () => GetDriverInfoUseCase(getIt<DriverRepository>()),
-  );
+    getIt.registerLazySingleton<LogoutUseCase>(
+      () => LogoutUseCase(getIt<AuthRepository>()),
+    );
 
-  getIt.registerLazySingleton<UpdateDriverInfoUseCase>(
-    () => UpdateDriverInfoUseCase(getIt<DriverRepository>()),
-  );
+    getIt.registerLazySingleton<RefreshTokenUseCase>(
+      () => RefreshTokenUseCase(getIt<AuthRepository>()),
+    );
 
-  getIt.registerLazySingleton<ChangePasswordUseCase>(
-    () => ChangePasswordUseCase(getIt<AuthRepository>()),
-  );
+    getIt.registerLazySingleton<GetDriverInfoUseCase>(
+      () => GetDriverInfoUseCase(getIt<DriverRepository>()),
+    );
 
-  getIt.registerLazySingleton<GetDriverOrdersUseCase>(
-    () => GetDriverOrdersUseCase(orderRepository: getIt<OrderRepository>()),
-  );
+    getIt.registerLazySingleton<UpdateDriverInfoUseCase>(
+      () => UpdateDriverInfoUseCase(getIt<DriverRepository>()),
+    );
 
-  getIt.registerLazySingleton<GetOrderDetailsUseCase>(
-    () => GetOrderDetailsUseCase(orderRepository: getIt<OrderRepository>()),
-  );
+    getIt.registerLazySingleton<ChangePasswordUseCase>(
+      () => ChangePasswordUseCase(getIt<AuthRepository>()),
+    );
 
-  getIt.registerLazySingleton<DocumentLoadingAndSealUseCase>(
-    () => DocumentLoadingAndSealUseCase(
-      getIt<LoadingDocumentationRepository>(),
-    ),
-  );
+    getIt.registerLazySingleton<GetDriverOrdersUseCase>(
+      () => GetDriverOrdersUseCase(orderRepository: getIt<OrderRepository>()),
+    );
 
-  getIt.registerLazySingleton<CreateVehicleFuelConsumptionUseCase>(
-    () => CreateVehicleFuelConsumptionUseCase(getIt<VehicleRepository>()),
-  );
+    getIt.registerLazySingleton<GetOrderDetailsUseCase>(
+      () => GetOrderDetailsUseCase(orderRepository: getIt<OrderRepository>()),
+    );
 
-  getIt.registerLazySingleton<UpdateOrderToOngoingDeliveredUseCase>(
-    () => UpdateOrderToOngoingDeliveredUseCase(getIt<OrderRepository>()),
-  );
+    getIt.registerLazySingleton<DocumentLoadingAndSealUseCase>(
+      () => DocumentLoadingAndSealUseCase(
+        getIt<LoadingDocumentationRepository>(),
+      ),
+    );
 
-  getIt.registerLazySingleton<UpdateOrderToDeliveredUseCase>(
-    () => UpdateOrderToDeliveredUseCase(getIt<OrderRepository>()),
-  );
+    getIt.registerLazySingleton<CreateVehicleFuelConsumptionUseCase>(
+      () => CreateVehicleFuelConsumptionUseCase(getIt<VehicleRepository>()),
+    );
 
-  getIt.registerLazySingleton<UpdateOrderToSuccessfulUseCase>(
-    () => UpdateOrderToSuccessfulUseCase(getIt<OrderRepository>()),
-  );
+    getIt.registerLazySingleton<UpdateOrderToOngoingDeliveredUseCase>(
+      () => UpdateOrderToOngoingDeliveredUseCase(getIt<OrderRepository>()),
+    );
 
-  getIt.registerLazySingleton<UpdateOrderDetailStatusUseCase>(
-    () => UpdateOrderDetailStatusUseCase(getIt<OrderRepository>()),
-  );
+    getIt.registerLazySingleton<UpdateOrderToDeliveredUseCase>(
+      () => UpdateOrderToDeliveredUseCase(getIt<OrderRepository>()),
+    );
 
-  // View models
-  // Register AuthViewModel as LazySingleton to maintain state across the app
-  getIt.registerLazySingleton<AuthViewModel>(
-    () => AuthViewModel(
-      loginUseCase: getIt<LoginUseCase>(),
-      logoutUseCase: getIt<LogoutUseCase>(),
-      refreshTokenUseCase: getIt<RefreshTokenUseCase>(),
-      getDriverInfoUseCase: getIt<GetDriverInfoUseCase>(),
-    ),
-    // Remove instanceName to allow direct access via getIt<AuthViewModel>()
-  );
-  // NOTE: LocationTrackingViewModel removed - testing feature
+    getIt.registerLazySingleton<UpdateOrderToSuccessfulUseCase>(
+      () => UpdateOrderToSuccessfulUseCase(getIt<OrderRepository>()),
+    );
 
-  getIt.registerFactory<AccountViewModel>(
-    () => AccountViewModel(
-      getDriverInfoUseCase: getIt<GetDriverInfoUseCase>(),
-      updateDriverInfoUseCase: getIt<UpdateDriverInfoUseCase>(),
-      changePasswordUseCase: getIt<ChangePasswordUseCase>(),
-    ),
-  );
+    getIt.registerLazySingleton<UpdateOrderDetailStatusUseCase>(
+      () => UpdateOrderDetailStatusUseCase(getIt<OrderRepository>()),
+    );
 
-  getIt.registerFactory<OrderListViewModel>(
-    () => OrderListViewModel(
-      getDriverOrdersUseCase: getIt<GetDriverOrdersUseCase>(),
-    ),
-  );
+    // Notification use cases
+    getIt.registerLazySingleton<GetNotificationsUseCase>(
+      () => GetNotificationsUseCase(getIt<NotificationRepository>()),
+    );
 
-  getIt.registerFactory<OrderDetailViewModel>(
-    () => OrderDetailViewModel(
-      getOrderDetailsUseCase: getIt<GetOrderDetailsUseCase>(),
-      createVehicleFuelConsumptionUseCase: getIt<CreateVehicleFuelConsumptionUseCase>(),
-      photoCompletionRepository: getIt<PhotoCompletionRepository>(),
-      fuelConsumptionRepository: getIt<VehicleFuelConsumptionRepository>(),
-      updateToDeliveredUseCase: getIt<UpdateOrderToDeliveredUseCase>(),
-      updateToOngoingDeliveredUseCase: getIt<UpdateOrderToOngoingDeliveredUseCase>(),
-      authViewModel: getIt<AuthViewModel>(),
-    ),
-  );
+    getIt.registerLazySingleton<MarkNotificationReadUseCase>(
+      () => MarkNotificationReadUseCase(getIt<NotificationRepository>()),
+    );
 
-  getIt.registerFactory<PreDeliveryDocumentationViewModel>(
-    () => PreDeliveryDocumentationViewModel(
-      documentLoadingAndSealUseCase: getIt<DocumentLoadingAndSealUseCase>(),
-    ),
-  );
+    getIt.registerLazySingleton<GetNotificationStatsUseCase>(
+      () => GetNotificationStatsUseCase(getIt<NotificationRepository>()),
+    );
+
+    // View models
+    // Register AuthViewModel as LazySingleton to maintain state across the app
+    getIt.registerLazySingleton<AuthViewModel>(
+      () => AuthViewModel(
+        loginUseCase: getIt<LoginUseCase>(),
+        logoutUseCase: getIt<LogoutUseCase>(),
+        refreshTokenUseCase: getIt<RefreshTokenUseCase>(),
+        getDriverInfoUseCase: getIt<GetDriverInfoUseCase>(),
+      ),
+      // Remove instanceName to allow direct access via getIt<AuthViewModel>()
+    );
+    // NOTE: LocationTrackingViewModel removed - testing feature
+
+    getIt.registerFactory<AccountViewModel>(
+      () => AccountViewModel(
+        getDriverInfoUseCase: getIt<GetDriverInfoUseCase>(),
+        updateDriverInfoUseCase: getIt<UpdateDriverInfoUseCase>(),
+        changePasswordUseCase: getIt<ChangePasswordUseCase>(),
+      ),
+    );
+
+    getIt.registerFactory<OrderListViewModel>(
+      () => OrderListViewModel(
+        getDriverOrdersUseCase: getIt<GetDriverOrdersUseCase>(),
+      ),
+    );
+
+    getIt.registerFactory<OrderDetailViewModel>(
+      () => OrderDetailViewModel(
+        getOrderDetailsUseCase: getIt<GetOrderDetailsUseCase>(),
+        createVehicleFuelConsumptionUseCase:
+            getIt<CreateVehicleFuelConsumptionUseCase>(),
+        photoCompletionRepository: getIt<PhotoCompletionRepository>(),
+        fuelConsumptionRepository: getIt<VehicleFuelConsumptionRepository>(),
+        updateToDeliveredUseCase: getIt<UpdateOrderToDeliveredUseCase>(),
+        updateToOngoingDeliveredUseCase:
+            getIt<UpdateOrderToOngoingDeliveredUseCase>(),
+        authViewModel: getIt<AuthViewModel>(),
+      ),
+    );
+
+    getIt.registerFactory<PreDeliveryDocumentationViewModel>(
+      () => PreDeliveryDocumentationViewModel(
+        documentLoadingAndSealUseCase: getIt<DocumentLoadingAndSealUseCase>(),
+      ),
+    );
+
+    // Notification ViewModel - registered as Factory like other ViewModels
+    getIt.registerFactory<NotificationViewModel>(
+      () => NotificationViewModel(
+        getNotificationsUseCase: getIt<GetNotificationsUseCase>(),
+        markNotificationReadUseCase: getIt<MarkNotificationReadUseCase>(),
+        getNotificationStatsUseCase: getIt<GetNotificationStatsUseCase>(),
+      ),
+    );
 
     // Đăng ký NavigationViewModel as Factory để mỗi NavigationScreen có instance riêng
     // CRITICAL: Không dùng LazySingleton vì khi có 2 giả lập chạy cùng lúc,

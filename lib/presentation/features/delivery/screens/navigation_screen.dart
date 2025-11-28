@@ -14,6 +14,7 @@ import '../../../../core/services/token_storage_service.dart';
 import '../../../../app/di/service_locator.dart';
 import '../../../../data/datasources/api_client.dart';
 import '../../../../presentation/theme/app_colors.dart';
+import '../../../../presentation/common_widgets/skeleton_loader.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
 import '../../../../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../../../../presentation/utils/driver_role_checker.dart';
@@ -49,7 +50,8 @@ class NavigationScreen extends StatefulWidget {
   State<NavigationScreen> createState() => _NavigationScreenState();
 }
 
-class _NavigationScreenState extends State<NavigationScreen> with WidgetsBindingObserver, RouteAware {
+class _NavigationScreenState extends State<NavigationScreen>
+    with WidgetsBindingObserver, RouteAware {
   late final NavigationViewModel _viewModel;
   late final GlobalLocationManager _globalLocationManager;
   late final AuthViewModel _authViewModel;
@@ -59,13 +61,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   bool _isMapReady = false;
   bool _isMapInitialized = false;
   bool _isLoadingMapStyle = true;
-  
+
   // ✅ Unified loading state - ensures ALL components are ready before showing UI
-  bool get _isFullyReady => 
-      !_isInitializing && 
-      !_isLoadingMapStyle && 
-      _isMapReady && 
-      _isMapInitialized && 
+  bool get _isFullyReady =>
+      !_isInitializing &&
+      !_isLoadingMapStyle &&
+      _isMapReady &&
+      _isMapInitialized &&
       _initializationError == null;
   bool _isFollowingUser = true;
   bool _isConnectingWebSocket = false;
@@ -82,64 +84,65 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
   // Biến để theo dõi chế độ 3D
   bool _is3DMode = true;
-  
+
   // Camera throttling for ultra-fast performance (moveCamera)
   DateTime? _lastCameraUpdate;
-  static const _cameraThrottleMs = 16; // 60 FPS - fastest possible with moveCamera
+  static const _cameraThrottleMs =
+      16; // 60 FPS - fastest possible with moveCamera
 
   // Pending seal replacements
   List<Issue> _pendingSealReplacements = [];
   bool _isLoadingPendingSeals = false;
-  
+
   // Refresh stream subscription
   StreamSubscription<void>? _refreshSubscription;
-  
+
   // Map loading timeout mechanism
   Timer? _mapLoadingTimeoutTimer;
   static const Duration _mapLoadingTimeout = Duration(seconds: 30);
-  
+
   // Seal bottom sheet stream subscription
   StreamSubscription<String>? _sealBottomSheetSubscription;
-  
+
   // Return payment success stream subscription
   StreamSubscription<Map<String, dynamic>>? _returnPaymentSubscription;
-  
+
   // Track if return payment dialog is showing to prevent duplicates
   bool _isReturnPaymentDialogShowing = false;
-  
+
   // ✅ NEW: Stream subscriptions for notification dialogs (4 only - seal assignment handled by OrderDetailScreen)
   StreamSubscription<Map<String, dynamic>>? _damageResolvedSubscription;
   StreamSubscription<Map<String, dynamic>>? _orderRejectionResolvedSubscription;
   StreamSubscription<Map<String, dynamic>>? _paymentTimeoutSubscription;
   StreamSubscription<Map<String, dynamic>>? _rerouteResolvedSubscription;
-  
+
   // Track dialog showing states to prevent duplicates (4 only)
   bool _isDamageResolvedDialogShowing = false;
   bool _isOrderRejectionResolvedDialogShowing = false;
   bool _isPaymentTimeoutDialogShowing = false;
   bool _isRerouteResolvedDialogShowing = false;
-  
+
   // Fuel consumption state
   String? _fuelConsumptionId;
   bool _isLoadingFuelConsumption = false;
-  
+
   // Order loading state to prevent duplicate calls
   bool _isLoadingOrder = false;
-  
+
   // Data readiness state - true when order details loaded and route parsed successfully
   bool _isDataReady = false;
-  
+
   // Retry tracking for load order details
   int _loadOrderRetryCount = 0;
   static const int _maxLoadOrderRetries = 3;
-  
+
   // ✅ CRITICAL: Initial loading state - true until order loads successfully for the first time
   bool _isInitializing = true;
   String? _initializationError;
 
   // Custom marker for current location
   Symbol? _currentLocationMarker;
-  
+
   // Waypoint markers list
   List<Marker> _waypointMarkers = [];
 
@@ -152,7 +155,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   @override
   void initState() {
     super.initState();
-    
+
     _viewModel = getIt<NavigationViewModel>();
     _globalLocationManager = getIt<GlobalLocationManager>();
     _authViewModel = getIt<AuthViewModel>();
@@ -162,9 +165,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
     // Register this screen with GlobalLocationManager
     _globalLocationManager.registerScreen('NavigationScreen');
-    
+
     _loadMapStyle();
-    
+
     // NOTE: Timeout mechanism disabled - map renders asynchronously without blocking UI
     // _startMapLoadingTimeout();
 
@@ -174,92 +177,103 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // 🔄 CRITICAL: Preserve current segment index before reload (for reroute)
       final previousSegmentIndex = _viewModel.currentSegmentIndex;
       final wasSimulating = _isSimulating;
-      
-      print('🔄 Refreshing route - Previous segment: $previousSegmentIndex, Was simulating: $wasSimulating');
-      
+
+      print(
+        '🔄 Refreshing route - Previous segment: $previousSegmentIndex, Was simulating: $wasSimulating',
+      );
+
       // 🆕 Fetch latest order to get newest journey history (for return routes, reroutes)
       await _loadOrderDetails();
-      
+
       // 🎯 CRITICAL: Restore current segment index after reload
       if (previousSegmentIndex < _viewModel.routeSegments.length) {
         _viewModel.setCurrentSegmentIndex(previousSegmentIndex);
         print('✅ Restored segment index: $previousSegmentIndex');
       } else {
-        print('⚠️ Previous segment index $previousSegmentIndex out of bounds, keeping current: ${_viewModel.currentSegmentIndex}');
+        print(
+          '⚠️ Previous segment index $previousSegmentIndex out of bounds, keeping current: ${_viewModel.currentSegmentIndex}',
+        );
       }
-      
+
       // Re-draw routes with new journey data
       if (_viewModel.routeSegments.isNotEmpty && _isMapReady) {
         _drawRoutes();
       }
-      
+
       // Fetch pending seal replacements
       await _fetchPendingSealReplacements();
       // Auto-resume simulation if no pending seals
-      if (_pendingSealReplacements.isEmpty && widget.isSimulationMode && wasSimulating) {
-        print('🔄 Auto-resuming simulation at segment ${_viewModel.currentSegmentIndex}');
+      if (_pendingSealReplacements.isEmpty &&
+          widget.isSimulationMode &&
+          wasSimulating) {
+        print(
+          '🔄 Auto-resuming simulation at segment ${_viewModel.currentSegmentIndex}',
+        );
         _autoResumeSimulation();
-      } else {
-      }
+      } else {}
     });
-    
+
     // 🆕 Subscribe to seal bottom sheet stream from NotificationService
     // Pattern 2: Action-required notification
-    _sealBottomSheetSubscription = notificationService.showSealBottomSheetStream.listen((issueId) async {
-      // Fetch pending seals to get the issue details
-      await _fetchPendingSealReplacements();
-      
-      // Find the issue in pending list
-      Issue? issue;
-      try {
-        issue = _pendingSealReplacements.firstWhere((i) => i.id == issueId);
-      } catch (e) {
-        // Issue not found in list
-        issue = null;
-      }
-      
-      if (issue != null) {
-        // Show bottom sheet for seal confirmation
-        _showConfirmSealSheet(issue);
-      } else {
-      }
-    });
-    
+    _sealBottomSheetSubscription = notificationService.showSealBottomSheetStream
+        .listen((issueId) async {
+          // Fetch pending seals to get the issue details
+          await _fetchPendingSealReplacements();
+
+          // Find the issue in pending list
+          Issue? issue;
+          try {
+            issue = _pendingSealReplacements.firstWhere((i) => i.id == issueId);
+          } catch (e) {
+            // Issue not found in list
+            issue = null;
+          }
+
+          if (issue != null) {
+            // Show bottom sheet for seal confirmation
+            _showConfirmSealSheet(issue);
+          } else {}
+        });
+
     // 🆕 Subscribe to return payment success stream from NotificationService
     // Pattern: Info notification with action required
-    _returnPaymentSubscription = notificationService.returnPaymentSuccessStream.listen((data) async {
+    _returnPaymentSubscription = notificationService.returnPaymentSuccessStream.listen((
+      data,
+    ) async {
       if (!mounted) return;
-      
+
       // CRITICAL: Prevent duplicate dialogs
       if (_isReturnPaymentDialogShowing) {
         print('⚠️ Return payment dialog already showing, skipping duplicate');
         return;
       }
-      
+
       final vehicleAssignmentId = data['vehicleAssignmentId'] as String?;
-      
+
       // Set flag before showing dialog
       _isReturnPaymentDialogShowing = true;
-      
+
       // ✅ OPTIMIZATION: Pre-fetch seal data BEFORE showing dialog
       // This eliminates waiting time when user clicks button
       print('🚀 Pre-fetching seal data for instant display...');
       List<VehicleSeal>? preFetchedSeals;
       try {
         final issueRepository = getIt<IssueRepository>();
-        final inUseSealData = await issueRepository.getInUseSeal(vehicleAssignmentId!);
+        final inUseSealData = await issueRepository.getInUseSeal(
+          vehicleAssignmentId!,
+        );
         if (inUseSealData != null && inUseSealData is Map<String, dynamic>) {
           preFetchedSeals = [
             VehicleSeal(
               id: inUseSealData['id'] ?? '',
               description: inUseSealData['description'] ?? '',
-              sealDate: inUseSealData['sealDate'] != null 
-                  ? DateTime.parse(inUseSealData['sealDate']) 
+              sealDate: inUseSealData['sealDate'] != null
+                  ? DateTime.parse(inUseSealData['sealDate'])
                   : DateTime.now(),
               status: inUseSealData['status'] ?? 'IN_USE',
               sealCode: inUseSealData['sealCode'] ?? '',
               sealAttachedImage: inUseSealData['sealAttachedImage'],
-            )
+            ),
           ];
           print('✅ Seal data pre-fetched successfully');
         } else {
@@ -269,9 +283,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         print('⚠️ Failed to pre-fetch seal data: $e');
         preFetchedSeals = null;
       }
-      
+
       if (!mounted) return;
-      
+
       // Show return payment success dialog with proper context
       await showDialog(
         context: context, // ✅ Use screen context with Provider access
@@ -302,10 +316,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               const Text(
                 'Yêu cầu báo cáo seal',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
               // Message
@@ -327,20 +338,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               child: ElevatedButton(
                 onPressed: () async {
                   print('🔘 Return payment dialog button clicked');
-                  
+
                   // ✅ CRITICAL: Capture context BEFORE any async operations
                   final navigatorContext = Navigator.of(context);
                   final scaffoldMessenger = ScaffoldMessenger.of(context);
-                  
+
                   // Close dialog immediately
                   navigatorContext.pop();
                   print('✅ Dialog closed, preparing to show seal report...');
-                  
+
                   // ✅ Use unawaited future to avoid blocking and use captured state
                   _handleReturnPaymentSealReport(
                     vehicleAssignmentId: vehicleAssignmentId,
                     scaffoldMessenger: scaffoldMessenger,
-                    preFetchedSeals: preFetchedSeals, // Pass pre-fetched data for instant display
+                    preFetchedSeals:
+                        preFetchedSeals, // Pass pre-fetched data for instant display
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -353,10 +365,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 ),
                 child: const Text(
                   'Báo cáo seal',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -369,157 +378,219 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         print('✅ Return payment dialog dismissed, flag reset');
       });
     });
-    
+
     // ❌ REMOVED: Seal assignment listener moved to OrderDetailScreen exclusively
     // OrderDetailScreen now handles full flow: notification → confirm seal sheet → upload photo → navigate here with auto-resume
     // This prevents duplicate dialogs and provides better UX with single unified flow
-    
+
     // ✅ NEW: Subscribe to damage resolved stream
-    _damageResolvedSubscription = notificationService.damageResolvedStream.listen((data) async {
-      if (!mounted || _isDamageResolvedDialogShowing) return;
-      
-      _isDamageResolvedDialogShowing = true;
-      final isOnNavigationScreen = data['isOnNavigationScreen'] as bool? ?? false;
-      
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          contentPadding: const EdgeInsets.all(24),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  shape: BoxShape.circle,
+    _damageResolvedSubscription = notificationService.damageResolvedStream
+        .listen((data) async {
+          if (!mounted || _isDamageResolvedDialogShowing) return;
+
+          _isDamageResolvedDialogShowing = true;
+          final isOnNavigationScreen =
+              data['isOnNavigationScreen'] as bool? ?? false;
+
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              contentPadding: const EdgeInsets.all(24),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_circle_outline,
+                      color: Colors.green.shade600,
+                      size: 48,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Sự cố đã được xử lý. Bạn có thể tiếp tục hành trình.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      if (!isOnNavigationScreen) {
+                        final navigationStateService =
+                            getIt<NavigationStateService>();
+                        final savedOrderId = navigationStateService
+                            .getActiveOrderId();
+                        if (savedOrderId != null) {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            AppRoutes.navigation,
+                            arguments: {
+                              'orderId': savedOrderId,
+                              'isSimulationMode': widget.isSimulationMode,
+                            },
+                          );
+                        } else {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            AppRoutes.navigation,
+                          );
+                        }
+                      } else {
+                        notificationService.triggerNavigationScreenRefresh();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Xác nhận',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
-                child: Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 48),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Sự cố đã được xử lý. Bạn có thể tiếp tục hành trình.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, height: 1.5),
-              ),
-            ],
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  if (!isOnNavigationScreen) {
-                    final navigationStateService = getIt<NavigationStateService>();
-                    final savedOrderId = navigationStateService.getActiveOrderId();
-                    if (savedOrderId != null) {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        AppRoutes.navigation,
-                        arguments: {'orderId': savedOrderId, 'isSimulationMode': widget.isSimulationMode},
-                      );
-                    } else {
-                      Navigator.pushReplacementNamed(context, AppRoutes.navigation);
-                    }
-                  } else {
-                    notificationService.triggerNavigationScreenRefresh();
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('Xác nhận', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              ),
+              ],
             ),
-          ],
-        ),
-      ).whenComplete(() => _isDamageResolvedDialogShowing = false);
-    });
-    
+          ).whenComplete(() => _isDamageResolvedDialogShowing = false);
+        });
+
     // ✅ NEW: Subscribe to order rejection resolved stream
-    _orderRejectionResolvedSubscription = notificationService.orderRejectionResolvedStream.listen((data) async {
-      if (!mounted || _isOrderRejectionResolvedDialogShowing) return;
-      
-      _isOrderRejectionResolvedDialogShowing = true;
-      final isOnNavigationScreen = data['isOnNavigationScreen'] as bool? ?? false;
-      
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          contentPadding: const EdgeInsets.all(24),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  shape: BoxShape.circle,
+    _orderRejectionResolvedSubscription = notificationService
+        .orderRejectionResolvedStream
+        .listen((data) async {
+          if (!mounted || _isOrderRejectionResolvedDialogShowing) return;
+
+          _isOrderRejectionResolvedDialogShowing = true;
+          final isOnNavigationScreen =
+              data['isOnNavigationScreen'] as bool? ?? false;
+
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              contentPadding: const EdgeInsets.all(24),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_circle_outline,
+                      color: Colors.green.shade600,
+                      size: 48,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Yêu cầu trả hàng đã xử lý. Bạn có thể tiếp tục hành trình.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      if (!isOnNavigationScreen) {
+                        final navigationStateService =
+                            getIt<NavigationStateService>();
+                        final savedOrderId = navigationStateService
+                            .getActiveOrderId();
+                        if (savedOrderId != null) {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            AppRoutes.navigation,
+                            arguments: {
+                              'orderId': savedOrderId,
+                              'isSimulationMode': widget.isSimulationMode,
+                            },
+                          );
+                        } else {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            AppRoutes.navigation,
+                          );
+                        }
+                      } else {
+                        notificationService.triggerNavigationScreenRefresh();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Xác nhận',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
-                child: Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 48),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Yêu cầu trả hàng đã xử lý. Bạn có thể tiếp tục hành trình.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, height: 1.5),
-              ),
-            ],
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  if (!isOnNavigationScreen) {
-                    final navigationStateService = getIt<NavigationStateService>();
-                    final savedOrderId = navigationStateService.getActiveOrderId();
-                    if (savedOrderId != null) {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        AppRoutes.navigation,
-                        arguments: {'orderId': savedOrderId, 'isSimulationMode': widget.isSimulationMode},
-                      );
-                    } else {
-                      Navigator.pushReplacementNamed(context, AppRoutes.navigation);
-                    }
-                  } else {
-                    notificationService.triggerNavigationScreenRefresh();
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('Xác nhận', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              ),
+              ],
             ),
-          ],
-        ),
-      ).whenComplete(() => _isOrderRejectionResolvedDialogShowing = false);
-    });
-    
+          ).whenComplete(() => _isOrderRejectionResolvedDialogShowing = false);
+        });
+
     // ✅ NEW: Subscribe to payment timeout stream
-    _paymentTimeoutSubscription = notificationService.paymentTimeoutStream.listen((data) async {
+    _paymentTimeoutSubscription = notificationService.paymentTimeoutStream.listen((
+      data,
+    ) async {
       if (!mounted || _isPaymentTimeoutDialogShowing) return;
-      
+
       _isPaymentTimeoutDialogShowing = true;
-      final isOnNavigationScreen = data['isOnNavigationScreen'] as bool? ?? false;
-      
+      final isOnNavigationScreen =
+          data['isOnNavigationScreen'] as bool? ?? false;
+
       await showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           contentPadding: const EdgeInsets.all(24),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -530,13 +601,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                   color: Colors.orange.shade50,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.warning_amber_rounded, color: Colors.orange.shade600, size: 48),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange.shade600,
+                  size: 48,
+                ),
               ),
               const SizedBox(height: 20),
               const Text(
                 'Khách hàng không thanh toán cước trả hàng. Bạn có thể quay về đơn vị vận chuyển.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, height: 1.5),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
@@ -550,16 +629,24 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                     if (isOnNavigationScreen) {
                       notificationService.triggerNavigationScreenRefresh();
                     } else {
-                      final navigationStateService = getIt<NavigationStateService>();
-                      final savedOrderId = navigationStateService.getActiveOrderId();
+                      final navigationStateService =
+                          getIt<NavigationStateService>();
+                      final savedOrderId = navigationStateService
+                          .getActiveOrderId();
                       if (savedOrderId != null) {
                         Navigator.pushReplacementNamed(
                           context,
                           AppRoutes.navigation,
-                          arguments: {'orderId': savedOrderId, 'isSimulationMode': widget.isSimulationMode},
+                          arguments: {
+                            'orderId': savedOrderId,
+                            'isSimulationMode': widget.isSimulationMode,
+                          },
                         );
                       } else {
-                        Navigator.pushReplacementNamed(context, AppRoutes.navigation);
+                        Navigator.pushReplacementNamed(
+                          context,
+                          AppRoutes.navigation,
+                        );
                       }
                     }
                   });
@@ -567,159 +654,179 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange.shade600,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
-                child: const Text('Xác nhận', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                child: const Text(
+                  'Xác nhận',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ],
         ),
       ).whenComplete(() => _isPaymentTimeoutDialogShowing = false);
     });
-    
+
     // ✅ NEW: Subscribe to reroute resolved stream
-    _rerouteResolvedSubscription = notificationService.rerouteResolvedStream.listen((data) async {
-      if (!mounted || _isRerouteResolvedDialogShowing) return;
-      
-      _isRerouteResolvedDialogShowing = true;
-      final issueId = data['issueId'] as String?;
-      final orderId = data['orderId'] as String?;
-      final isOnNavigationScreen = data['isOnNavigationScreen'] as bool? ?? false;
-      
-      print('🛣️ Reroute resolved notification received');
-      print('   Issue ID: $issueId');
-      print('   Order ID: $orderId');
-      print('   Is on navigation screen: $isOnNavigationScreen');
-      
-      // 🚨 CRITICAL FIX: Fetch new route FIRST, then show success dialog
-      // Pattern 1: Info-only notification (like damage resolved)
-      // Flow: Fetch order → Re-render map → Auto resume → Show success dialog
-      print('🔄 Fetching new route and resuming BEFORE showing dialog...');
-      
-      try {
-        // Fetch new route and auto resume
-        await _fetchNewRouteAndAutoResume();
-        
-        // Only show dialog AFTER successfully fetched and resumed
-        if (!mounted) return;
-        
-        // 🚨 Try to pop waiting dialog if exists
+    _rerouteResolvedSubscription = notificationService.rerouteResolvedStream.listen(
+      (data) async {
+        if (!mounted || _isRerouteResolvedDialogShowing) return;
+
+        _isRerouteResolvedDialogShowing = true;
+        final issueId = data['issueId'] as String?;
+        final orderId = data['orderId'] as String?;
+        final isOnNavigationScreen =
+            data['isOnNavigationScreen'] as bool? ?? false;
+
+        print('🛣️ Reroute resolved notification received');
+        print('   Issue ID: $issueId');
+        print('   Order ID: $orderId');
+        print('   Is on navigation screen: $isOnNavigationScreen');
+
+        // 🚨 CRITICAL FIX: Fetch new route FIRST, then show success dialog
+        // Pattern 1: Info-only notification (like damage resolved)
+        // Flow: Fetch order → Re-render map → Auto resume → Show success dialog
+        print('🔄 Fetching new route and resuming BEFORE showing dialog...');
+
         try {
-          Navigator.of(context, rootNavigator: false).pop();
-          await Future.delayed(const Duration(milliseconds: 100));
-          print('   ✅ Dismissed waiting dialog');
-        } catch (e) {
-          print('   ℹ️ No waiting dialog to dismiss');
-        }
-        
-        // Show success dialog - already resumed!
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            contentPadding: const EdgeInsets.all(24),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.check_circle, color: Colors.green.shade600, size: 48),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Đã cập nhật lộ trình mới',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Lộ trình mới đã được tải và hệ thống đã tự động tiếp tục.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, height: 1.5),
-                ),
-              ],
-            ),
-            actions: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Just dismiss
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text('Đóng', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        );
-      } catch (e) {
-        print('❌ Error in reroute resolved flow: $e');
-        // Show error dialog
-        if (mounted) {
-          showDialog(
+          // Fetch new route and auto resume
+          await _fetchNewRouteAndAutoResume();
+
+          // Only show dialog AFTER successfully fetched and resumed
+          if (!mounted) return;
+
+          // 🚨 Try to pop waiting dialog if exists
+          try {
+            Navigator.of(context, rootNavigator: false).pop();
+            await Future.delayed(const Duration(milliseconds: 100));
+            print('   ✅ Dismissed waiting dialog');
+          } catch (e) {
+            print('   ℹ️ No waiting dialog to dismiss');
+          }
+
+          // Show success dialog - already resumed!
+          await showDialog(
             context: context,
+            barrierDismissible: false,
             builder: (context) => AlertDialog(
-              title: const Text('Lỗi'),
-              content: Text('Không thể tải lộ trình mới: $e'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              contentPadding: const EdgeInsets.all(24),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_circle,
+                      color: Colors.green.shade600,
+                      size: 48,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Đã cập nhật lộ trình mới',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Lộ trình mới đã được tải và hệ thống đã tự động tiếp tục.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                ],
+              ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Đóng'),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Just dismiss
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đóng',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           );
+        } catch (e) {
+          print('❌ Error in reroute resolved flow: $e');
+          // Show error dialog
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Lỗi'),
+                content: Text('Không thể tải lộ trình mới: $e'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Đóng'),
+                  ),
+                ],
+              ),
+            );
+          }
+        } finally {
+          _isRerouteResolvedDialogShowing = false;
         }
-      } finally {
-        _isRerouteResolvedDialogShowing = false;
-      }
-    });
+      },
+    );
 
     // Check if viewModel is already simulating (returning to active simulation)
     // Only set _isSimulating if viewModel confirms it's running
     if (_viewModel.isSimulating && widget.isSimulationMode) {
       _isSimulating = true;
-      
+
       // CRITICAL: Check and resume immediately if already have route segments
       // Don't wait for _loadOrderDetails() which might be slow or fail
       if (_viewModel.routeSegments.isNotEmpty) {
         _checkAndResumeAfterAction();
       }
-    } else {
-    }
+    } else {}
 
     // ✅ CRITICAL: Load order details FIRST before showing UI
     // Block all UI rendering until this completes successfully
     _initializeScreen();
-    
   }
-  
+
   /// ✅ CRITICAL: Initialize screen by loading order data FIRST
   /// All UI will be blocked with loading screen until this succeeds
   Future<void> _initializeScreen() async {
     try {
       print('🚀 Initializing navigation screen...');
-      
+
       // 1️⃣ Load order details with retry (BLOCKING)
       await _loadOrderDetails();
-      
+
       // 2️⃣ Check if order loaded successfully
       if (!_isDataReady) {
         throw Exception('Không thể tải thông tin đơn hàng sau khi retry');
       }
-      
+
       print('✅ Order loaded successfully, showing UI...');
-      
+
       // 3️⃣ Mark initialization as complete
       if (mounted) {
         setState(() {
@@ -727,7 +834,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           _initializationError = null;
         });
       }
-      
+
       // 4️⃣ After UI shown, load non-critical data
       if (mounted) {
         // ✅ CRITICAL: Set correct segment BEFORE any resume logic
@@ -737,15 +844,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           print('   Current segment (old): ${_viewModel.currentSegmentIndex}');
           print('   Journey type: ${_viewModel.currentJourneyType}');
           print('   Total segments: ${_viewModel.routeSegments.length}');
-          
+
           // Journey structure:
           // STANDARD (3 segments): 0: Carrier→Pickup, 1: Pickup→Delivery, 2: Delivery→Carrier
           // RETURN (4 segments): 0: Carrier→Pickup, 1: Pickup→Delivery, 2: Delivery→Pickup, 3: Pickup→Carrier
           // REROUTE: Can be based on STANDARD or RETURN, flexible segment count
-          
+
           int returnSegmentIndex;
           final segmentCount = _viewModel.routeSegments.length;
-          
+
           if (_viewModel.currentJourneyType == 'RETURN') {
             // RETURN journey: segment 2 is always return start (Delivery → Pickup)
             returnSegmentIndex = 2;
@@ -755,89 +862,115 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             if (segmentCount >= 4) {
               // Reroute after return: segment 2+ is rerouted return journey
               returnSegmentIndex = 2;
-              print('   ✅ REROUTE (return-based) detected: Setting to segment 2');
+              print(
+                '   ✅ REROUTE (return-based) detected: Setting to segment 2',
+              );
             } else {
               // Reroute on standard journey: use last segment
               returnSegmentIndex = segmentCount - 1;
-              print('   ✅ REROUTE (standard-based) detected: Setting to last segment');
+              print(
+                '   ✅ REROUTE (standard-based) detected: Setting to last segment',
+              );
             }
           } else {
             // STANDARD or unknown: use last segment
             returnSegmentIndex = segmentCount - 1;
             print('   ⚠️ STANDARD/Unknown journey: Setting to last segment');
           }
-          
+
           print('   Target segment: $returnSegmentIndex');
-          
+
           // Set segment immediately to prevent any logic from using old segment
           _viewModel.setCurrentSegmentIndex(returnSegmentIndex);
-          
-          print('   ✅ Segment set! New index: ${_viewModel.currentSegmentIndex}');
+
+          print(
+            '   ✅ Segment set! New index: ${_viewModel.currentSegmentIndex}',
+          );
         }
-        
+
         // Precache truck marker images
         _precacheTruckImages();
-        
+
         // Fetch pending seal replacements
         _fetchPendingSealReplacements();
-        
+
         // Check if we need to auto-resume simulation (ONLY if not using autoResume flag)
         // Priority: autoResume flag takes precedence over normal resume logic
-        if (!widget.autoResume && _viewModel.routeSegments.isNotEmpty && _viewModel.isSimulating && !_isSimulating) {
+        if (!widget.autoResume &&
+            _viewModel.routeSegments.isNotEmpty &&
+            _viewModel.isSimulating &&
+            !_isSimulating) {
           print('🔄 Normal resume: Checking and resuming after action...');
           _checkAndResumeAfterAction();
         }
-        
+
         // ✅ Auto-resume simulation if flag is set (from OrderDetailScreen seal confirmation)
         if (widget.autoResume && widget.isSimulationMode && !_isSimulating) {
-          print('🚀 [NavScreen] Auto-resuming simulation after seal confirmation...');
-          
+          print(
+            '🚀 [NavScreen] Auto-resuming simulation after seal confirmation...',
+          );
+
           // Segment already set above, now just verify and prepare UI
           if (_viewModel.routeSegments.isNotEmpty) {
-            print('📍 Route segments loaded: ${_viewModel.routeSegments.length}');
-            print('📍 Current segment index: ${_viewModel.currentSegmentIndex}');
+            print(
+              '📍 Route segments loaded: ${_viewModel.routeSegments.length}',
+            );
+            print(
+              '📍 Current segment index: ${_viewModel.currentSegmentIndex}',
+            );
             print('📍 Journey type: ${_viewModel.currentJourneyType}');
-            
+
             // Debug: Print segment names
             for (int i = 0; i < _viewModel.routeSegments.length; i++) {
               final marker = i == _viewModel.currentSegmentIndex ? '👉' : '  ';
-              print('   $marker Segment $i: ${_viewModel.routeSegments[i].name} (${_viewModel.routeSegments[i].points.length} points)');
+              print(
+                '   $marker Segment $i: ${_viewModel.routeSegments[i].name} (${_viewModel.routeSegments[i].points.length} points)',
+              );
             }
-            
+
             // ✅ CRITICAL: Ensure everything is ready before auto-resume
             if (mounted) {
               // Step 1: Update UI state
               setState(() {
-                print('🎨 Step 1: UI state updated with segment index: ${_viewModel.currentSegmentIndex}');
+                print(
+                  '🎨 Step 1: UI state updated with segment index: ${_viewModel.currentSegmentIndex}',
+                );
               });
-              
+
               // Step 2: Wait for UI to render
               await Future.delayed(const Duration(milliseconds: 300));
-              
+
               // Step 3: Redraw routes with new active segment
               if (_isMapReady && _viewModel.routeSegments.isNotEmpty) {
-                print('🎨 Step 2: Redrawing routes for segment: ${_viewModel.getCurrentSegmentName()}');
+                print(
+                  '🎨 Step 2: Redrawing routes for segment: ${_viewModel.getCurrentSegmentName()}',
+                );
                 _drawRoutes();
               }
-              
+
               // Step 4: Wait for routes to render on map
               await Future.delayed(const Duration(milliseconds: 500));
-              
+
               // Step 5: Verify everything is ready (segment already set above, just check location)
               if (mounted && _viewModel.currentLocation != null) {
                 print('✅ Step 3: Everything ready!');
                 print('   - Segment index: ${_viewModel.currentSegmentIndex}');
-                print('   - Segment name: ${_viewModel.getCurrentSegmentName()}');
+                print(
+                  '   - Segment name: ${_viewModel.getCurrentSegmentName()}',
+                );
                 print('   - Current location: ${_viewModel.currentLocation}');
                 print('   - Map ready: $_isMapReady');
-                
+
                 // Step 6: Focus camera to new location (return segment start)
-                if (_mapController != null && _viewModel.currentLocation != null) {
-                  print('📸 Step 3.5: Focusing camera to return segment start...');
+                if (_mapController != null &&
+                    _viewModel.currentLocation != null) {
+                  print(
+                    '📸 Step 3.5: Focusing camera to return segment start...',
+                  );
                   await _setCameraToNavigationMode(_viewModel.currentLocation!);
                   await Future.delayed(const Duration(milliseconds: 300));
                 }
-                
+
                 // Step 7: NOW safe to auto-resume
                 await Future.delayed(const Duration(milliseconds: 300));
                 if (mounted) {
@@ -856,20 +989,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     } catch (e, stackTrace) {
       print('❌ Failed to initialize screen: $e');
       print('Stack trace: $stackTrace');
-      
+
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _initializationError = 'Không thể tải thông tin lộ trình. ${e.toString()}';
+          _initializationError =
+              'Không thể tải thông tin lộ trình. ${e.toString()}';
         });
       }
     }
   }
-  
+
   /// Precache truck marker images để giảm decode time
   Future<void> _precacheTruckImages() async {
     if (!mounted) return;
-    
+
     final truckImagePaths = [
       'assets/icons/truck_marker_icon/truck_north.png',
       'assets/icons/truck_marker_icon/truck_northeast.png',
@@ -880,7 +1014,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       'assets/icons/truck_marker_icon/truck_west.png',
       'assets/icons/truck_marker_icon/truck_northwest.png',
     ];
-    
+
     try {
       for (final imagePath in truckImagePaths) {
         await precacheImage(AssetImage(imagePath), context);
@@ -889,10 +1023,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Non-critical, continue anyway
     }
   }
-  
+
   /// Fetch pending seal replacements for current vehicle assignment
   Future<void> _fetchPendingSealReplacements() async {
-    if (_viewModel.vehicleAssignmentId == null || 
+    if (_viewModel.vehicleAssignmentId == null ||
         _viewModel.vehicleAssignmentId!.isEmpty) {
       return;
     }
@@ -907,13 +1041,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       final pendingIssues = await issueRepository.getPendingSealReplacements(
         vehicleAssignmentId,
       );
-      
+
       setState(() {
         _pendingSealReplacements = pendingIssues;
         _isLoadingPendingSeals = false;
       });
-      
-      
     } catch (e) {
       setState(() {
         _isLoadingPendingSeals = false;
@@ -923,7 +1055,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
   /// Fetch fuel consumption ID by vehicle assignment
   Future<void> _fetchFuelConsumptionId() async {
-    if (_viewModel.vehicleAssignmentId == null || 
+    if (_viewModel.vehicleAssignmentId == null ||
         _viewModel.vehicleAssignmentId!.isEmpty) {
       return;
     }
@@ -937,18 +1069,20 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       final result = await dataSource.getByVehicleAssignmentId(
         _viewModel.vehicleAssignmentId!,
       );
-      
+
       result.fold(
         (failure) {
           setState(() {
             _isLoadingFuelConsumption = false;
           });
-          
+
           // Show user-friendly message if no fuel consumption record found
           if (failure.message.contains('Chưa có bản ghi tiêu thụ nhiên liệu')) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Chưa có bản ghi tiêu thụ nhiên liệu. Vui lòng tạo bản ghi trước khi upload hóa đơn.'),
+                content: Text(
+                  'Chưa có bản ghi tiêu thụ nhiên liệu. Vui lòng tạo bản ghi trước khi upload hóa đơn.',
+                ),
                 backgroundColor: Colors.orange,
                 duration: Duration(seconds: 3),
               ),
@@ -974,7 +1108,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       });
     }
   }
-  
+
   /// Show fuel invoice upload bottom sheet
   /// CRITICAL: Fetch fuel consumption ID on-demand when user clicks button
   Future<void> _showFuelInvoiceUploadSheet() async {
@@ -996,22 +1130,24 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         ),
       ),
     );
-    
+
     try {
       // Fetch fuel consumption ID from API
       await _fetchFuelConsumptionId();
-      
+
       // Close loading dialog
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
       }
-      
+
       // Check if we got the ID
       if (_fuelConsumptionId == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Chưa có bản ghi tiêu thụ nhiên liệu. Vui lòng thử lại sau.'),
+              content: Text(
+                'Chưa có bản ghi tiêu thụ nhiên liệu. Vui lòng thử lại sau.',
+              ),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 3),
             ),
@@ -1019,24 +1155,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         }
         return;
       }
-      
+
       // Show the upload form
       if (!mounted) return;
     } catch (e) {
       // Close loading dialog
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
         );
       }
       return;
     }
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1050,7 +1183,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               fuelConsumptionId: _fuelConsumptionId!,
               invoiceImage: imageFile,
             );
-            
+
             result.fold(
               (failure) {
                 if (mounted) {
@@ -1076,10 +1209,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Lỗi: $e'),
-                  backgroundColor: Colors.red,
-                ),
+                SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
               );
             }
             rethrow;
@@ -1100,13 +1230,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     try {
       // ✅ OPTIMIZATION: Reduced delay from 300ms → 100ms since data is pre-fetched
       await Future.delayed(const Duration(milliseconds: 100));
-      
+
       // ✅ CRITICAL: Check mounted state BEFORE any context operations
       if (!mounted) {
         print('⚠️ Widget not mounted after delay');
         return;
       }
-      
+
       // Validate vehicleAssignmentId
       if (vehicleAssignmentId == null || vehicleAssignmentId.isEmpty) {
         print('❌ No vehicle assignment ID');
@@ -1118,28 +1248,32 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         );
         return;
       }
-      
+
       // ✅ OPTIMIZATION: Use pre-fetched data if available, fallback to API call
       List<VehicleSeal> activeSeals = [];
-      
+
       if (preFetchedSeals != null && preFetchedSeals.isNotEmpty) {
         print('⚡ Using pre-fetched seal data (instant!)');
         activeSeals = preFetchedSeals;
       } else {
         print('📡 Pre-fetch failed, fetching seal data now...');
-        
+
         // Fallback: Get IN_USE seal via API
         final issueRepository = getIt<IssueRepository>();
-        final inUseSealData = await issueRepository.getInUseSeal(vehicleAssignmentId);
-        
-        print('📦 Seal data received: ${inUseSealData != null ? "yes" : "null"}');
-        
+        final inUseSealData = await issueRepository.getInUseSeal(
+          vehicleAssignmentId,
+        );
+
+        print(
+          '📦 Seal data received: ${inUseSealData != null ? "yes" : "null"}',
+        );
+
         // Check mounted again after async call
         if (!mounted) {
           print('⚠️ Widget unmounted after API call');
           return;
         }
-        
+
         if (inUseSealData == null) {
           scaffoldMessenger.showSnackBar(
             const SnackBar(
@@ -1149,22 +1283,24 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           );
           return;
         }
-        
+
         // Parse seal data
         if (inUseSealData is Map<String, dynamic>) {
-          activeSeals.add(VehicleSeal(
-            id: inUseSealData['id'] ?? '',
-            description: inUseSealData['description'] ?? '',
-            sealDate: inUseSealData['sealDate'] != null 
-                ? DateTime.parse(inUseSealData['sealDate']) 
-                : DateTime.now(),
-            status: inUseSealData['status'] ?? 'IN_USE',
-            sealCode: inUseSealData['sealCode'] ?? '',
-            sealAttachedImage: inUseSealData['sealAttachedImage'],
-          ));
+          activeSeals.add(
+            VehicleSeal(
+              id: inUseSealData['id'] ?? '',
+              description: inUseSealData['description'] ?? '',
+              sealDate: inUseSealData['sealDate'] != null
+                  ? DateTime.parse(inUseSealData['sealDate'])
+                  : DateTime.now(),
+              status: inUseSealData['status'] ?? 'IN_USE',
+              sealCode: inUseSealData['sealCode'] ?? '',
+              sealAttachedImage: inUseSealData['sealAttachedImage'],
+            ),
+          );
         }
       }
-      
+
       if (activeSeals.isEmpty) {
         print('⚠️ Active seals list is empty');
         scaffoldMessenger.showSnackBar(
@@ -1175,15 +1311,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         );
         return;
       }
-      
+
       // Final mounted check before showing bottom sheet
       if (!mounted) {
         print('⚠️ Widget unmounted before showing bottom sheet');
         return;
       }
-      
+
       print('📝 Opening seal removal report bottom sheet...');
-      
+
       // ✅ Use current context (guaranteed to be valid if mounted)
       final result = await showModalBottomSheet(
         context: context,
@@ -1197,32 +1333,34 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           availableSeals: activeSeals,
         ),
       );
-      
+
       print('📝 Seal report result: $result');
-      
+
       // Check mounted after bottom sheet closes
       if (!mounted) {
         print('⚠️ Widget unmounted after bottom sheet');
         return;
       }
-      
+
       // After reporting seal, trigger refresh
       if (result != null) {
         print('✅ Seal reported, refreshing data...');
         await _loadOrderDetails();
         await _fetchPendingSealReplacements();
-        
+
         // ❌ REMOVED: Don't auto-resume here - causes duplicate simulation conflict
         // Auto-resume will happen ONLY after driver confirms new seal and navigates back
         // from OrderDetailScreen with autoResume flag
-        print('⏸️ Waiting for driver to confirm new seal assignment before resuming...');
+        print(
+          '⏸️ Waiting for driver to confirm new seal assignment before resuming...',
+        );
       } else {
         print('⚠️ No result from seal report');
       }
     } catch (e, stackTrace) {
       print('❌ Error in return payment seal report flow: $e');
       print('📍 Stack trace: $stackTrace');
-      
+
       // Only show error if still mounted
       if (mounted) {
         scaffoldMessenger.showSnackBar(
@@ -1255,21 +1393,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             return;
           } catch (e) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Lỗi: $e')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
             }
             rethrow;
           }
         },
       ),
     );
-    
+
     // After bottom sheet is closed, check result before refreshing and showing success
     if (mounted && result == true) {
       // Wait a bit for backend to update issue status
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // Refresh pending list
       await _fetchPendingSealReplacements();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1279,10 +1417,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         ),
       );
       _autoResumeSimulation();
-    } else {
-    }
+    } else {}
   }
-  
+
   // Check if we need to resume simulation after action confirmation
   void _checkAndResumeAfterAction() {
     // CRITICAL: If ViewModel is simulating but screen state is not, sync immediately
@@ -1290,20 +1427,18 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     if (_viewModel.isSimulating && !_isSimulating) {
       _isSimulating = true;
       _isPaused = false; // ViewModel is actively simulating, so NOT paused
-      
+
       // IMPORTANT: Ensure timer is reset before resuming
       // This handles case where timer might still be active from previous session
       _viewModel.pauseSimulation(); // Cancel any existing timer
-      
+
       // Reset _isSimulating flag so startSimulation can be called
       _viewModel.resetSimulationFlag();
-      
+
       // CRITICAL: Re-register callbacks since NavigationScreen was recreated
       // This ensures location updates and segment completion are handled properly
       _viewModel.startSimulation(
         onLocationUpdate: (location, bearing) {
-          
-
           // CRITICAL: Update viewModel's current location with simulated location
           _viewModel.currentLocation = location;
 
@@ -1330,8 +1465,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           }
         },
         onSegmentComplete: (segmentIndex, isLastSegment) {
-          
-
           // Pause simulation when reaching any waypoint
           _pauseSimulation();
           _drawRoutes();
@@ -1351,28 +1484,27 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       );
       return; // Exit early since we've already handled the resume
     }
-    
+
     // If in simulation mode and paused (user manually paused), auto-resume
     if (widget.isSimulationMode && _isSimulating && _isPaused) {
-      
-      
       // Check if we're at the end of a segment (just completed an action)
-      final currentSegment = _viewModel.routeSegments.isNotEmpty && 
-                            _viewModel.currentSegmentIndex < _viewModel.routeSegments.length
+      final currentSegment =
+          _viewModel.routeSegments.isNotEmpty &&
+              _viewModel.currentSegmentIndex < _viewModel.routeSegments.length
           ? _viewModel.routeSegments[_viewModel.currentSegmentIndex]
           : null;
-      
-      if (currentSegment != null && 
+
+      if (currentSegment != null &&
           _viewModel.currentLocation != null &&
           currentSegment.points.isNotEmpty) {
         final lastPoint = currentSegment.points.last;
         final isAtEndOfSegment = _viewModel.currentLocation == lastPoint;
-        
+
         if (isAtEndOfSegment) {
           _viewModel.moveToNextSegmentManually();
         }
       }
-      
+
       // Delay to ensure UI is ready and map is loaded
       Future.delayed(const Duration(milliseconds: 1000), () async {
         if (mounted && _isPaused) {
@@ -1381,7 +1513,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             await _setCameraToNavigationMode(_viewModel.currentLocation!);
             await Future.delayed(const Duration(milliseconds: 300));
           }
-          
+
           // Then resume
           _resumeSimulation();
         }
@@ -1390,7 +1522,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   @override
-  VehicleAssignment? _getVehicleAssignmentFromOrderDetail(OrderWithDetails order) {
+  VehicleAssignment? _getVehicleAssignmentFromOrderDetail(
+    OrderWithDetails order,
+  ) {
     if (order.orderDetails.isEmpty || order.vehicleAssignments.isEmpty) {
       return null;
     }
@@ -1402,15 +1536,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }
     // Find vehicle assignment where current user is primary driver
     try {
-      final result = order.vehicleAssignments.firstWhere(
-        (va) {
-          if (va.primaryDriver == null) {
-            return false;
-          }
-          final match = currentUserPhone.trim() == va.primaryDriver!.phoneNumber.trim();
-          return match;
-        },
-      );
+      final result = order.vehicleAssignments.firstWhere((va) {
+        if (va.primaryDriver == null) {
+          return false;
+        }
+        final match =
+            currentUserPhone.trim() == va.primaryDriver!.phoneNumber.trim();
+        return match;
+      });
       return result;
     } catch (e) {
       // Fallback to first vehicle assignment if not found
@@ -1428,19 +1561,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   Future<void> _fetchNewRouteAndAutoResume() async {
     try {
       print('🔄 Fetching new rerouted journey...');
-      
+
       // 🎯 CRITICAL: Save current state BEFORE fetching new route
       final wasSimulating = _isSimulating;
       final previousSegmentIndex = _viewModel.currentSegmentIndex;
       final previousLocation = _viewModel.currentLocation;
       final previousSpeed = _viewModel.currentSpeed;
-      
+
       print('   📍 Current state before fetch:');
       print('      Was simulating: $wasSimulating');
       print('      Segment index: $previousSegmentIndex');
-      print('      Location: ${previousLocation?.latitude}, ${previousLocation?.longitude}');
+      print(
+        '      Location: ${previousLocation?.latitude}, ${previousLocation?.longitude}',
+      );
       print('      Speed: $previousSpeed km/h');
-      
+
       // Show loading indicator
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1464,31 +1599,31 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           ),
         );
       }
-      
+
       // Fetch order to get latest journey history
       final orderId = widget.orderId ?? _viewModel.orderWithDetails?.id;
       if (orderId == null) {
         throw Exception('Không tìm thấy ID đơn hàng');
       }
-      
+
       print('   Fetching order: $orderId');
-      
+
       // Update order in viewModel first
       await _viewModel.getOrderDetails(orderId);
-      
+
       // Parse route from updated order
       if (_viewModel.orderWithDetails != null) {
         _viewModel.parseRouteFromOrder(_viewModel.orderWithDetails!);
-        
+
         // Redraw routes on map
         if (_viewModel.routeSegments.isNotEmpty) {
           _drawRoutes();
         }
       }
-      
+
       print('✅ New route rendered successfully');
       print('   📍 New route segments: ${_viewModel.routeSegments.length}');
-      
+
       // 🎯 CRITICAL: Restore previous position and segment
       // Don't reset to start/end - maintain current location like seal replacement flow
       if (previousLocation != null && previousSegmentIndex >= 0) {
@@ -1500,9 +1635,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           // If previous segment no longer exists (route changed significantly),
           // stay at first segment instead of jumping to end
           _viewModel.currentSegmentIndex = 0;
-          print('   ⚠️ Previous segment no longer exists, staying at segment 0');
+          print(
+            '   ⚠️ Previous segment no longer exists, staying at segment 0',
+          );
         }
-        
+
         // 🚨 CRITICAL FIX: Use restoreSimulationPosition() instead of direct assignment
         // This ensures _currentPointIndices is properly set for the new route
         // Direct assignment causes bug where old _currentPointIndices makes simulation jump to wrong segment
@@ -1513,11 +1650,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           bearing: _viewModel.currentBearing,
         );
         _viewModel.currentSpeed = previousSpeed;
-        
+
         print('   ✅ Restored position using restoreSimulationPosition()');
         print('   ✅ Segment: ${_viewModel.currentSegmentIndex}');
-        print('   ✅ Location: ${previousLocation.latitude}, ${previousLocation.longitude}');
-        
+        print(
+          '   ✅ Location: ${previousLocation.latitude}, ${previousLocation.longitude}',
+        );
+
         // 🚨 CRITICAL: Save restored state immediately so _startSimulation() won't overwrite
         // Otherwise NavigationStateService has old position from previous session
         _globalLocationManager.sendLocationUpdate(
@@ -1529,13 +1668,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         );
         print('   ✅ Saved restored state to prevent overwrite');
       }
-      
+
       // Update UI
       if (mounted) {
         setState(() {
           _isDataReady = true;
         });
-        
+
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1544,23 +1683,27 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             duration: Duration(seconds: 2),
           ),
         );
-        
+
         // 🚀 AUTO-RESUME simulation if was running
         if (wasSimulating) {
-          print('🔄 Auto-resuming simulation with new route from current position...');
+          print(
+            '🔄 Auto-resuming simulation with new route from current position...',
+          );
           print('   Previous segment: $previousSegmentIndex');
           print('   Current segment: ${_viewModel.currentSegmentIndex}');
-          
+
           // Wait for UI to update
           await Future.delayed(const Duration(milliseconds: 300));
-          
+
           // Simple pattern like seal replacement: just start simulation!
           // Position and segment already restored above
           if (_isPaused) {
             print('   Simulation was paused, resuming...');
             _resumeSimulation();
           } else if (!_viewModel.isSimulating) {
-            print('   Simulation not running, starting with restored position...');
+            print(
+              '   Simulation not running, starting with restored position...',
+            );
             // 🚨 CRITICAL: Pass shouldRestore: true to use saved state (position we just saved above)
             // Without this, _startSimulation() uses first point of new route!
             _startSimulation(shouldRestore: true);
@@ -1571,7 +1714,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       }
     } catch (e) {
       print('❌ Error fetching new route: $e');
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1602,17 +1745,17 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     } else if (state == AppLifecycleState.resumed && mounted) {
       // Refresh pending seals
       _fetchPendingSealReplacements();
-      
+
       // REMOVED: Refresh fuel consumption in background
       // Will be fetched on-demand when user clicks button
-      
+
       // Check if simulation should be running
       if (widget.isSimulationMode && _viewModel.isSimulating) {
         // Update camera to current position
         if (_viewModel.currentLocation != null && _mapController != null) {
           _setCameraToNavigationMode(_viewModel.currentLocation!);
         }
-        
+
         // Update marker
         if (_viewModel.currentLocation != null) {
           _updateLocationMarker(
@@ -1620,58 +1763,57 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             _viewModel.currentBearing,
           );
         }
-        
+
         // Simulation timer should still be running unless explicitly paused
         // No need to restart - it continues in background
-      } else if (widget.isSimulationMode && !_viewModel.isSimulating && _globalLocationManager.isGlobalTrackingActive) {
+      } else if (widget.isSimulationMode &&
+          !_viewModel.isSimulating &&
+          _globalLocationManager.isGlobalTrackingActive) {
         // ViewModel lost simulation state but GlobalLocationManager is tracking
         _checkAndResumeAfterAction();
       }
     } else if (state == AppLifecycleState.inactive) {
       // App is transitioning (e.g., during navigation or receiving a call)
-      
     } else if (state == AppLifecycleState.detached) {
       // App is being terminated
-      
     }
   }
 
   @override
   void dispose() {
-    
     // CRITICAL: Set disposing flag FIRST to prevent any NEW map operations
     _isDisposing = true;
-    
+
     // ⚠️ IMPORTANT: DO NOT clean up map resources in dispose!
     // Reasons:
     // 1. Map controller will be automatically destroyed when screen disposes
     // 2. Async cleanup operations cause race conditions with new screen initialization
     // 3. NavigationScreen creates new map instance each time, no reuse needed
     // 4. Style loading state makes cleanup timing unpredictable
-    // 
+    //
     // Let Flutter handle map cleanup automatically when widget tree is destroyed.
     // Remove observers
     WidgetsBinding.instance.removeObserver(this);
 
     // 🆕 Dispose refresh subscription
     _refreshSubscription?.cancel();
-    
+
     // 🆕 Dispose seal bottom sheet subscription
     _sealBottomSheetSubscription?.cancel();
-    
+
     // 🆕 Dispose return payment subscription
     _returnPaymentSubscription?.cancel();
-    
+
     // ✅ NEW: Dispose notification dialog subscriptions (4 only)
     _damageResolvedSubscription?.cancel();
     _orderRejectionResolvedSubscription?.cancel();
     _paymentTimeoutSubscription?.cancel();
     _rerouteResolvedSubscription?.cancel();
-    
+
     // 🆕 Dispose map loading timeout timer
     _mapLoadingTimeoutTimer?.cancel();
     _mapLoadingTimeoutTimer = null;
-    
+
     // Unregister this screen from GlobalLocationManager
     _globalLocationManager.unregisterScreen('NavigationScreen');
 
@@ -1713,10 +1855,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     try {
       print('   🔍 [MapStyle] Fetching style from VietMapService...');
       final vietMapService = getIt<VietMapService>();
-      
+
       // Try cache first (memory or SharedPreferences), then API
       final styleUrl = await vietMapService.getMobileStyleUrl();
-      print('   ✅ [MapStyle] Style URL loaded: ${styleUrl.substring(0, 50)}...');
+      print(
+        '   ✅ [MapStyle] Style URL loaded: ${styleUrl.substring(0, 50)}...',
+      );
       setState(() {
         _mapStyle = styleUrl; // Store URL, SDK handles loading
         _isLoadingMapStyle = false;
@@ -1743,14 +1887,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       }
     }
   }
-  
+
   /// Start timeout mechanism for map loading
   void _startMapLoadingTimeout() {
-    print('⏱️ [MapTimeout] Starting ${_mapLoadingTimeout.inSeconds}s timeout for map loading...');
-    
+    print(
+      '⏱️ [MapTimeout] Starting ${_mapLoadingTimeout.inSeconds}s timeout for map loading...',
+    );
+
     _mapLoadingTimeoutTimer = Timer(_mapLoadingTimeout, () {
       if (!mounted || _isFullyReady) return;
-      
+
       print('⚠️ [MapTimeout] Map loading timeout reached!');
       print('   📊 Final state:');
       print('      - Initializing: $_isInitializing');
@@ -1758,20 +1904,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       print('      - Map ready: $_isMapReady');
       print('      - Map initialized: $_isMapInitialized');
       print('      - Map controller: ${_mapController != null}');
-      
+
       // Cancel timeout timer
       _mapLoadingTimeoutTimer?.cancel();
       _mapLoadingTimeoutTimer = null;
-      
+
       // Show timeout error
       if (mounted) {
         setState(() {
-          _initializationError = 'Bản đồ không tải được sau ${_mapLoadingTimeout.inSeconds} giây. Vui lòng kiểm tra kết nối mạng và thử lại.';
+          _initializationError =
+              'Bản đồ không tải được sau ${_mapLoadingTimeout.inSeconds} giây. Vui lòng kiểm tra kết nối mạng và thử lại.';
         });
       }
     });
   }
-  
+
   /// Cancel timeout mechanism when map is ready
   void _cancelMapLoadingTimeout() {
     if (_mapLoadingTimeoutTimer != null) {
@@ -1786,10 +1933,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     if (_mapStyle != null) {
       // Check if it's a URL (from VietMapService cache)
       if (_mapStyle!.startsWith('http')) {
-        // 
+        //
         return _mapStyle!; // SDK handles URL loading automatically
       }
-      
+
       // Otherwise, it's JSON (from local asset) - need to parse and modify
       try {
         final dynamic styleJson = json.decode(_mapStyle!);
@@ -1915,21 +2062,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     if (_isLoadingOrder) {
       return;
     }
-    
+
     // Reset retry count nếu đây không phải retry call
     if (!isRetry) {
       _loadOrderRetryCount = 0;
     }
-    
+
     setState(() {
       _isLoadingOrder = true;
       _isDataReady = false; // Reset data ready state
     });
-    
+
     try {
       // Get orderId - if null, use existing order from viewModel
       String? targetOrderId = widget.orderId;
-      
+
       if (targetOrderId == null) {
         // If viewModel already has order, reload it
         if (_viewModel.orderWithDetails != null) {
@@ -1942,9 +2089,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           return;
         }
       }
-      
-      print('📡 Loading order details (attempt ${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries)...');
-      
+
+      print(
+        '📡 Loading order details (attempt ${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries)...',
+      );
+
       // Tải dữ liệu order từ API
       await _viewModel.getOrderDetails(targetOrderId);
 
@@ -1952,21 +2101,25 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         _viewModel.parseRouteFromOrder(_viewModel.orderWithDetails!);
 
         // ✅ CRITICAL: Check if route parsing was successful
-        if (_viewModel.routeSegments.isNotEmpty && 
+        if (_viewModel.routeSegments.isNotEmpty &&
             _viewModel.vehicleAssignmentId != null &&
             _viewModel.vehicleAssignmentId!.isNotEmpty) {
           setState(() {
             _isDataReady = true; // Data is ready
           });
-          print('✅ Order details loaded successfully, route ready with ${_viewModel.routeSegments.length} segments');
+          print(
+            '✅ Order details loaded successfully, route ready with ${_viewModel.routeSegments.length} segments',
+          );
           // Reset retry count on success
           _loadOrderRetryCount = 0;
         } else {
           // Route parsing failed - retry nếu chưa hết lần
-          print('⚠️ Route parsing failed, segments: ${_viewModel.routeSegments.length}, vehicleAssignmentId: ${_viewModel.vehicleAssignmentId}');
+          print(
+            '⚠️ Route parsing failed, segments: ${_viewModel.routeSegments.length}, vehicleAssignmentId: ${_viewModel.vehicleAssignmentId}',
+          );
           await _handleLoadOrderFailure(
-            errorMessage: _viewModel.errorMessage.isNotEmpty 
-                ? _viewModel.errorMessage 
+            errorMessage: _viewModel.errorMessage.isNotEmpty
+                ? _viewModel.errorMessage
                 : 'Lộ trình chưa sẵn sàng',
             isParsingError: true,
           );
@@ -1992,7 +2145,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       });
     }
   }
-  
+
   /// Handle load order failure với retry logic
   Future<void> _handleLoadOrderFailure({
     required String errorMessage,
@@ -2001,16 +2154,18 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     setState(() {
       _isDataReady = false;
     });
-    
+
     // Kiểm tra xem có thể retry không
     if (_loadOrderRetryCount < _maxLoadOrderRetries) {
       _loadOrderRetryCount++;
-      
+
       // Exponential backoff: 1s, 2s, 4s
       final delaySeconds = (1 << (_loadOrderRetryCount - 1)); // 2^(n-1)
-      
-      print('⏳ Retrying in ${delaySeconds}s... (attempt ${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries)');
-      
+
+      print(
+        '⏳ Retrying in ${delaySeconds}s... (attempt ${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries)',
+      );
+
       // Show retry notification ONLY if not initializing (có loading screen rồi)
       if (mounted && !_isInitializing) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2023,10 +2178,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           ),
         );
       }
-      
+
       // Đợi trước khi retry
       await Future.delayed(Duration(seconds: delaySeconds));
-      
+
       // Retry
       if (mounted) {
         await _loadOrderDetails(isRetry: true);
@@ -2035,15 +2190,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Đã hết retry attempts - show error cho user
       print('❌ All retry attempts exhausted, showing error to user');
       _loadOrderRetryCount = 0; // Reset counter
-      
+
       // ✅ CRITICAL: If initializing, don't show snackbar (error screen sẽ hiển thị)
       // If not initializing (reload sau khi đã vào screen), show snackbar
       if (mounted && !_isInitializing) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              errorMessage.isNotEmpty 
-                  ? errorMessage 
+              errorMessage.isNotEmpty
+                  ? errorMessage
                   : 'Không thể tải thông tin lộ trình. Vui lòng kiểm tra kết nối và thử lại.',
             ),
             backgroundColor: isParsingError ? Colors.orange : Colors.red,
@@ -2071,7 +2226,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     setState(() {
       _isMapReady = true;
     });
-    
+
     // CRITICAL: Draw routes now that map is ready
     // This handles case where _onStyleLoaded() was called before _onMapRendered()
     if (_viewModel.routeSegments.isNotEmpty) {
@@ -2079,13 +2234,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       _drawRoutes();
     }
   }
-  
+
   /// Check if map operations are safe to perform
   bool get _isMapOperationSafe {
-    return !_isDisposing && 
-           _mapController != null && 
-           _isMapReady && 
-           !_isLoadingMapStyle;
+    return !_isDisposing &&
+        _mapController != null &&
+        _isMapReady &&
+        !_isLoadingMapStyle;
   }
 
   void _onStyleLoaded() {
@@ -2114,10 +2269,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           // Check if we should auto-restore simulation from saved state
           final stateService = getIt<NavigationStateService>();
           final savedState = stateService.getSavedNavigationState();
-          final shouldAutoRestore = savedState != null && 
-                                   savedState.orderId == widget.orderId &&
-                                   savedState.isSimulationMode &&
-                                   widget.isSimulationMode;
+          final shouldAutoRestore =
+              savedState != null &&
+              savedState.orderId == widget.orderId &&
+              savedState.isSimulationMode &&
+              widget.isSimulationMode;
 
           // Start real tracking or simulation based on mode
           // Priority: Check simulation mode first
@@ -2126,7 +2282,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               // Auto-start simulation WITH restore
               _startSimulation(shouldRestore: true);
             } else {
-              
               // Show dialog for new simulation
               _showSimulationDialog();
             }
@@ -2180,10 +2335,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Check if we should auto-restore simulation from saved state
       final stateService = getIt<NavigationStateService>();
       final savedState = stateService.getSavedNavigationState();
-      final shouldAutoRestore = savedState != null && 
-                               savedState.orderId == widget.orderId &&
-                               savedState.isSimulationMode &&
-                               widget.isSimulationMode;
+      final shouldAutoRestore =
+          savedState != null &&
+          savedState.orderId == widget.orderId &&
+          savedState.isSimulationMode &&
+          widget.isSimulationMode;
 
       // Start real tracking or simulation based on mode
       // Priority: Check simulation mode first, then check existing connections
@@ -2192,7 +2348,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           // Auto-start simulation WITH restore
           _startSimulation(shouldRestore: true);
         } else {
-          
           // Show dialog for new simulation
           _showSimulationDialog();
         }
@@ -2210,8 +2365,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         if (_viewModel.currentLocation != null) {
           _setCameraToNavigationMode(_viewModel.currentLocation!);
         }
-      } else {
-      }
+      } else {}
     }
   }
 
@@ -2253,28 +2407,29 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // Show progressive loading dialog với timeout protection
     final progressNotifier = ValueNotifier<String>('Đang khởi động...');
     bool dialogDismissed = false;
-    
+
     // CRITICAL: Timeout timer to prevent dialog stuck forever
     final timeoutTimer = Timer(const Duration(seconds: 10), () {
       if (!dialogDismissed && mounted) {
         try {
           Navigator.of(context, rootNavigator: true).pop();
           dialogDismissed = true;
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Kết nối WebSocket mất nhiều thời gian. Đang thử lại...'),
+                content: Text(
+                  'Kết nối WebSocket mất nhiều thời gian. Đang thử lại...',
+                ),
                 backgroundColor: Colors.orange,
                 duration: Duration(seconds: 3),
               ),
             );
           }
-        } catch (e) {
-        }
+        } catch (e) {}
       }
     });
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -2301,7 +2456,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     try {
       // CRITICAL: Nếu là simulation mode và tracking đã active
       // KHÔNG stop WebSocket, chỉ switch sang simulation mode
-      if (widget.isSimulationMode && _globalLocationManager.isGlobalTrackingActive) {
+      if (widget.isSimulationMode &&
+          _globalLocationManager.isGlobalTrackingActive) {
         // Check if it's the same order
         if (_globalLocationManager.currentOrderId == widget.orderId) {
           // Just register this screen, don't restart tracking
@@ -2311,8 +2467,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               'NavigationScreen',
               onLocationUpdate: (data) {
                 final isPrimary = _globalLocationManager.isPrimaryDriver;
-                
-                // 
+
+                //
 
                 final lat = data['latitude'] as double?;
                 final lng = data['longitude'] as double?;
@@ -2342,17 +2498,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 }
               },
             );
-          } else {
-          }
-          
+          } else {}
+
           // Close loading dialog and return success
           timeoutTimer.cancel(); // Cancel timeout timer
           if (!dialogDismissed && mounted) {
             try {
               Navigator.of(context, rootNavigator: true).pop();
               dialogDismissed = true;
-            } catch (e) {
-            }
+            } catch (e) {}
             setState(() {
               _isConnectingWebSocket = false;
             });
@@ -2363,24 +2517,30 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
       // Update progress
       progressNotifier.value = 'Xác thực thông tin tài xế...';
-      
+
       // Xác định driver role từ vehicle assignment hiện tại (không phải từ order chung)
       // CRITICAL: Với multi-trip orders, cần check xem user có phải là primary driver của CHUYẾN HIỆN TẠI
       bool isPrimaryDriver = true; // Default
-      if (_viewModel.orderWithDetails != null && _viewModel.vehicleAssignmentId != null) {
+      if (_viewModel.orderWithDetails != null &&
+          _viewModel.vehicleAssignmentId != null) {
         // Find the vehicle assignment for current trip
-        final currentVehicleAssignment = _viewModel.orderWithDetails!.vehicleAssignments
+        final currentVehicleAssignment = _viewModel
+            .orderWithDetails!
+            .vehicleAssignments
             .cast<VehicleAssignment?>()
             .firstWhere(
               (va) => va?.id == _viewModel.vehicleAssignmentId,
               orElse: () => null,
             );
-        
+
         if (currentVehicleAssignment != null) {
           // Check if current user is primary driver of THIS vehicle assignment
-          final currentUserPhone = _authViewModel.driver?.userResponse.phoneNumber;
-          if (currentUserPhone != null && currentVehicleAssignment.primaryDriver != null) {
-            isPrimaryDriver = currentUserPhone.trim() == 
+          final currentUserPhone =
+              _authViewModel.driver?.userResponse.phoneNumber;
+          if (currentUserPhone != null &&
+              currentVehicleAssignment.primaryDriver != null) {
+            isPrimaryDriver =
+                currentUserPhone.trim() ==
                 currentVehicleAssignment.primaryDriver!.phoneNumber.trim();
           }
         }
@@ -2388,15 +2548,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
       // Update progress
       progressNotifier.value = 'Đang kết nối tới máy chủ...';
-      
+
       // Use GlobalLocationManager instead of direct IntegratedLocationService
       // Get JWT token from TokenStorageService (always has the latest token after refresh)
       final tokenStorage = getIt<TokenStorageService>();
       final jwtToken = tokenStorage.getAccessToken();
-      
+
       // Get orderId - use widget.orderId or fallback to orderWithDetails
-      final String? targetOrderId = widget.orderId ?? _viewModel.orderWithDetails?.id;
-      
+      final String? targetOrderId =
+          widget.orderId ?? _viewModel.orderWithDetails?.id;
+
       if (targetOrderId == null) {
         if (mounted) {
           Navigator.of(context, rootNavigator: true).pop();
@@ -2406,10 +2567,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         }
         return false;
       }
-      
+
       // Small delay to allow UI to update
       await Future.delayed(const Duration(milliseconds: 100));
-      
+
       final success = await _globalLocationManager.startGlobalTracking(
         orderId: targetOrderId,
         vehicleId: _viewModel.currentVehicleId,
@@ -2434,7 +2595,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               final vehicleIdInData = data['vehicleId']?.toString();
               final expectedVehicleId = _viewModel.currentVehicleId;
               // CRITICAL: Extra safety check - verify vehicle ID matches
-              if (vehicleIdInData != null && expectedVehicleId != null && 
+              if (vehicleIdInData != null &&
+                  expectedVehicleId != null &&
                   vehicleIdInData != expectedVehicleId) {
                 return; // STOP - don't update camera
               }
@@ -2455,8 +2617,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 // Update camera if following user
                 if (_isFollowingUser && mounted) {
                   _setCameraToNavigationMode(location);
-                } else {
-                }
+                } else {}
               }
             },
             onError: (error) {
@@ -2470,8 +2631,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               }
             },
           );
-        } else {
-        }
+        } else {}
       }
 
       // Close loading dialog
@@ -2480,19 +2640,18 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         try {
           Navigator.of(context, rootNavigator: true).pop();
           dialogDismissed = true;
-        } catch (e) {
-        }
+        } catch (e) {}
       }
 
       if (success) {
         // Listen to tracking statistics from GlobalLocationManager
         // _globalLocationManager.globalStatsStream.listen((stats) {
-        //   
-        //   
-        //   
-        //   
-        //   
-        //   
+        //
+        //
+        //
+        //
+        //
+        //
         // });
 
         if (mounted) {
@@ -2534,8 +2693,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         try {
           Navigator.of(context, rootNavigator: true).pop();
           dialogDismissed = true;
-        } catch (e2) {
-        }
+        } catch (e2) {}
       }
 
       if (mounted) {
@@ -2570,8 +2728,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _drawRoutes({bool clearFirst = false}) {
-    
-    if (_isDisposing || _mapController == null || _viewModel.routeSegments.isEmpty) {
+    if (_isDisposing ||
+        _mapController == null ||
+        _viewModel.routeSegments.isEmpty) {
       return;
     }
 
@@ -2600,30 +2759,31 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   void _drawRoutesInternal() async {
     // CRITICAL: Check map ready state before drawing polylines
     // Polylines require map tiles to be loaded, unlike widget-based markers
-    if (_isDisposing || _mapController == null || _viewModel.routeSegments.isEmpty || !_isMapReady) {
-      
+    if (_isDisposing ||
+        _mapController == null ||
+        _viewModel.routeSegments.isEmpty ||
+        !_isMapReady) {
       return;
     }
     // Clear previous waypoint markers
     _waypointMarkers.clear();
-    
+
     // 🔥 XÓA TẤT CẢ POLYLINES CŨ trước khi vẽ line mới
     // Điều này đảm bảo chỉ line của segment hiện tại được hiển thị
     try {
       await _mapController!.clearPolylines();
-    } catch (e) {
-    }
+    } catch (e) {}
 
     // 🎯 CHỈ VẼ SEGMENT HIỆN TẠI - để driver tập trung vào đoạn đường đang đi
     final currentIndex = _viewModel.currentSegmentIndex;
-    
+
     // Validate segment index
     if (currentIndex < 0 || currentIndex >= _viewModel.routeSegments.length) {
       return;
     }
-    
+
     final currentSegment = _viewModel.routeSegments[currentIndex];
-    
+
     // Tối ưu hóa: giảm số điểm cần vẽ nếu quá nhiều
     List<LatLng> optimizedPoints = currentSegment.points;
     if (currentSegment.points.length > 100) {
@@ -2644,12 +2804,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     if (optimizedPoints.isNotEmpty) {
       // Get journey type to determine correct labels
       final journeyType = _viewModel.currentJourneyType;
-      
+
       // Start point marker
       Color startPointColor;
       IconData startPointIcon;
       String startLabel;
-      
+
       if (journeyType == 'RETURN') {
         // RETURN journey structure: Delivery → Return Pickup → Carrier
         if (currentIndex == 0) {
@@ -2682,7 +2842,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           startLabel = 'Điểm trước';
         }
       }
-      
+
       _waypointMarkers.add(
         Marker(
           child: Column(
@@ -2695,11 +2855,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                   border: Border.all(color: Colors.white, width: 3),
                 ),
                 padding: const EdgeInsets.all(6),
-                child: Icon(
-                  startPointIcon,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                child: Icon(startPointIcon, color: Colors.white, size: 20),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2726,7 +2882,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       Color endPointColor;
       IconData endPointIcon;
       String endLabel;
-      
+
       if (journeyType == 'RETURN') {
         // RETURN journey structure: Delivery → Return Pickup → Carrier
         if (currentIndex == 0) {
@@ -2777,11 +2933,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                   border: Border.all(color: Colors.white, width: 3),
                 ),
                 padding: const EdgeInsets.all(6),
-                child: Icon(
-                  endPointIcon,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                child: Icon(endPointIcon, color: Colors.white, size: 20),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2806,7 +2958,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     }
 
     // If not following user, fit map to show CURRENT segment points
-    if (!_isFollowingUser && optimizedPoints.length > 1 && _isMapOperationSafe) {
+    if (!_isFollowingUser &&
+        optimizedPoints.length > 1 &&
+        _isMapOperationSafe) {
       double minLat = 90.0, maxLat = -90.0, minLng = 180.0, maxLng = -180.0;
 
       for (final point in optimizedPoints) {
@@ -2888,16 +3042,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   void _clearMapElementsWithDelay() {
     Future.delayed(const Duration(milliseconds: 300), () async {
       if (_isDisposing || _mapController == null || _isLoadingMapStyle) return;
-      
+
       try {
         await _mapController!.clearPolylines();
-      } catch (e) {
-      }
-      
+      } catch (e) {}
+
       try {
         await _mapController!.clearCircles();
-      } catch (e) {
-      }
+      } catch (e) {}
     });
   }
 
@@ -2909,10 +3061,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       if (_currentLocationMarker != null) {
         await _mapController!.updateSymbol(
           _currentLocationMarker!,
-          SymbolOptions(
-            geometry: location,
-            textRotate: bearing ?? 0.0,
-          ),
+          SymbolOptions(geometry: location, textRotate: bearing ?? 0.0),
         );
       } else {
         // Create marker for the first time
@@ -2940,8 +3089,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             textRotate: bearing ?? 0.0,
           ),
         );
-      } catch (e2) {
-      }
+      } catch (e2) {}
     }
   }
 
@@ -3009,14 +3157,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       print('⚠️ Already simulating, skipping start');
       return;
     }
-    
+
     print('🚀 Starting simulation (shouldRestore: $shouldRestore)...');
-    
+
     // ============================================
     // PHASE 0: ENSURE DATA IS LOADED
     // ============================================
     print('🔍 Phase 0: Ensuring order data is loaded...');
-    
+
     // If data is not ready and not currently loading, try loading now
     if (!_isDataReady && !_isLoadingOrder) {
       print('   ⚠️ Data not ready, loading order details...');
@@ -3029,16 +3177,18 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           ),
         );
       }
-      
+
       await _loadOrderDetails();
-      
+
       // Check again after loading
       if (!_isDataReady) {
         print('❌ Data still not ready after loading');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Không thể tải thông tin lộ trình. Vui lòng kiểm tra kết nối và thử lại.'),
+              content: Text(
+                'Không thể tải thông tin lộ trình. Vui lòng kiểm tra kết nối và thử lại.',
+              ),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 4),
             ),
@@ -3047,7 +3197,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         return;
       }
     }
-    
+
     // If still loading, wait
     if (_isLoadingOrder) {
       print('   ⏳ Waiting for order to finish loading...');
@@ -3057,7 +3207,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         await Future.delayed(const Duration(milliseconds: 100));
         waitCount++;
       }
-      
+
       if (_isLoadingOrder) {
         print('❌ Loading timeout');
         if (mounted) {
@@ -3071,14 +3221,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         return;
       }
     }
-    
+
     print('   ✓ Data is ready');
-    
+
     // ============================================
     // PHASE 1: PRE-FLIGHT VALIDATION
     // ============================================
     print('✅ Phase 1: Pre-flight validation');
-    
+
     // Validate route data
     if (_viewModel.routeSegments.isEmpty) {
       print('❌ No route segments available');
@@ -3093,14 +3243,17 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       return;
     }
     print('   ✓ Route segments: ${_viewModel.routeSegments.length}');
-    
+
     // Validate vehicle assignment
-    if (_viewModel.vehicleAssignmentId == null || _viewModel.vehicleAssignmentId!.isEmpty) {
+    if (_viewModel.vehicleAssignmentId == null ||
+        _viewModel.vehicleAssignmentId!.isEmpty) {
       print('❌ No vehicle assignment ID');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Không tìm thấy thông tin phân công xe. Vui lòng liên hệ quản lý.'),
+            content: Text(
+              'Không tìm thấy thông tin phân công xe. Vui lòng liên hệ quản lý.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -3108,7 +3261,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       return;
     }
     print('   ✓ Vehicle assignment ID: ${_viewModel.vehicleAssignmentId}');
-    
+
     // Validate order details
     if (_viewModel.orderWithDetails == null) {
       print('❌ No order details');
@@ -3126,7 +3279,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
     // Reset any existing simulation in viewModel
     _viewModel.pauseSimulation();
-    
+
     // If NOT restoring (manual start), clear old saved state to start fresh
     if (!shouldRestore) {
       final stateService = getIt<NavigationStateService>();
@@ -3137,16 +3290,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // CRITICAL: Update simulation mode in GlobalLocationManager
     // This ensures saved state has correct simulation mode
     _globalLocationManager.updateSimulationMode(true);
-    
+
     // Save updated state with simulation mode
     await _globalLocationManager.saveNavigationState();
     print('   ✓ Saved navigation state');
-    
+
     // ============================================
     // PHASE 2: WEBSOCKET CONNECTION
     // ============================================
     print('📡 Phase 2: Establishing WebSocket connection');
-    
+
     // Connect to WebSocket first (with simulation mode enabled)
     final connected = await _startLocationTracking();
     if (!connected) {
@@ -3162,11 +3315,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       return;
     }
     print('   ✓ WebSocket connected');
-    
+
     // Wait for WebSocket connection to stabilize
     await Future.delayed(const Duration(milliseconds: 1000));
     print('   ✓ Connection stabilized');
-    
+
     // ============================================
     // PHASE 3: MAP & ROUTES READINESS CHECK
     // ============================================
@@ -3174,7 +3327,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     print('   📊 Map style loading: $_isLoadingMapStyle');
     print('   📊 Map ready: $_isMapReady');
     print('   📊 Map initialized: $_isMapInitialized');
-    
+
     // Wait for map style to finish loading first (max 2 seconds)
     int styleWaitCount = 0;
     while (_isLoadingMapStyle && styleWaitCount < 20) {
@@ -3182,13 +3335,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       await Future.delayed(const Duration(milliseconds: 100));
       styleWaitCount++;
     }
-    
+
     if (_isLoadingMapStyle) {
-      print('   ⚠️ Map style still loading after timeout, proceeding anyway...');
+      print(
+        '   ⚠️ Map style still loading after timeout, proceeding anyway...',
+      );
     } else {
       print('   ✓ Map style loaded');
     }
-    
+
     // Wait for map to be ready (max 2 seconds) - NON-BLOCKING
     int waitCount = 0;
     while ((!_isMapReady || !_isMapInitialized) && waitCount < 20) {
@@ -3196,7 +3351,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       await Future.delayed(const Duration(milliseconds: 100));
       waitCount++;
     }
-    
+
     if (!_isMapReady || !_isMapInitialized) {
       print('   ⚠️ Map not fully ready, but proceeding with simulation...');
       // ✅ CRITICAL FIX: Don't block simulation - map will render asynchronously
@@ -3204,7 +3359,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     } else {
       print('   ✓ Map ready and initialized');
     }
-    
+
     // Try to draw routes (will succeed if map is ready, otherwise skip)
     print('   🎨 Drawing routes...');
     if (_isMapReady && _isMapInitialized) {
@@ -3212,7 +3367,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     } else {
       print('   ⚠️ Skipping route drawing - will draw when map ready');
     }
-    
+
     // Wait for routes to render
     await Future.delayed(const Duration(milliseconds: 300));
     print('   ✓ Routes drawn');
@@ -3221,15 +3376,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // PHASE 4: CAMERA & INITIAL POSITION
     // ============================================
     print('📷 Phase 4: Setting camera and initial position');
-    
+
     // Get initial location (either restored or start of route)
     LatLng initialLocation;
     if (shouldRestore) {
       final stateService = getIt<NavigationStateService>();
       final savedState = stateService.getSavedNavigationState();
-      
-      if (savedState != null && 
-          savedState.orderId == widget.orderId && 
+
+      if (savedState != null &&
+          savedState.orderId == widget.orderId &&
           savedState.hasPosition &&
           savedState.currentLatitude != null &&
           savedState.currentLongitude != null) {
@@ -3240,13 +3395,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         print('   ✓ Using restored location: $initialLocation');
       } else {
         initialLocation = _viewModel.routeSegments[0].points.first;
-        print('   ⚠️ No valid saved state, using route start: $initialLocation');
+        print(
+          '   ⚠️ No valid saved state, using route start: $initialLocation',
+        );
       }
     } else {
       initialLocation = _viewModel.routeSegments[0].points.first;
       print('   ✓ Using route start location: $initialLocation');
     }
-    
+
     // Set camera to initial position
     if (_mapController != null) {
       print('   📸 Focusing camera...');
@@ -3254,23 +3411,23 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       await Future.delayed(const Duration(milliseconds: 300));
       print('   ✓ Camera focused');
     }
-    
+
     // ============================================
     // PHASE 5: START SIMULATION
     // ============================================
     print('▶️ Phase 5: Starting actual simulation');
-    
+
     setState(() {
       _isSimulating = true;
       _isPaused = false;
       _isFollowingUser = true; // Ensure following mode
     });
-    
+
     print('✅ All pre-flight checks passed, starting simulation...');
-    
+
     // Start the simulation
     _startActualSimulation(shouldRestore: shouldRestore);
-    
+
     print('🎉 Simulation started successfully!');
   }
 
@@ -3279,9 +3436,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     if (shouldRestore) {
       final stateService = getIt<NavigationStateService>();
       final savedState = stateService.getSavedNavigationState();
-      
-      if (savedState != null && 
-          savedState.orderId == widget.orderId && 
+
+      if (savedState != null &&
+          savedState.orderId == widget.orderId &&
           savedState.hasPosition) {
         // Restore position in viewModel with bearing
         if (savedState.currentSegmentIndex != null) {
@@ -3291,22 +3448,20 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             longitude: savedState.currentLongitude!,
             bearing: savedState.currentBearing,
           );
-          
+
           // Update marker with restored position
           _updateLocationMarker(
             _viewModel.currentLocation!,
             _viewModel.currentBearing,
           );
-          
+
           // Update camera to restored position
           if (_isFollowingUser && _mapController != null) {
             _setCameraToNavigationMode(_viewModel.currentLocation!);
           }
         }
-      } else {
-      }
-    } else {
-    }
+      } else {}
+    } else {}
 
     // Ensure we're following the vehicle
     setState(() {
@@ -3316,7 +3471,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // Start the simulation with callbacks
     _viewModel.startSimulation(
       onLocationUpdate: (location, bearing) {
-        // 
+        //
 
         // CRITICAL: Update viewModel's current location with simulated location
         // This ensures report incident uses simulated location, not GPS
@@ -3336,7 +3491,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           location.longitude,
           bearing: bearing,
           speed: _viewModel.currentSpeed, // Add current speed
-          segmentIndex: _viewModel.currentSegmentIndex, // Add segment for position restore
+          segmentIndex: _viewModel
+              .currentSegmentIndex, // Add segment for position restore
         );
 
         // Check if near delivery point (3km) and update status
@@ -3362,7 +3518,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           final segmentName = segment.name.toUpperCase();
           // Standard journey: Carrier -> Pickup -> Delivery -> Carrier (3 segments)
           // Return journey: Carrier -> Pickup -> Delivery -> Pickup -> Carrier (4 segments)
-          
+
           if (isReturnJourney) {
             // Return journey segments:
             // Index 0: Carrier -> Pickup (initial pickup - already done)
@@ -3409,8 +3565,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     });
     _viewModel.pauseSimulation();
 
-    
-
     // Rebuild UI to show speed = 0
     if (mounted) {
       setState(() {});
@@ -3420,14 +3574,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   void _autoResumeSimulation() async {
     // Auto resume simulation if it was paused and running
     if (_isPaused && _isSimulating && mounted) {
-      
       _resumeSimulation();
       return;
     }
-    
+
     // If simulation is in simulation mode but not actively running, restart it
     if (widget.isSimulationMode && !_viewModel.isSimulating && mounted) {
-      
       _startSimulation();
       return;
     }
@@ -3463,8 +3615,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     });
     _viewModel.resumeSimulation();
 
-    
-
     // Wait a bit for map to be ready, then refocus camera
     await Future.delayed(const Duration(milliseconds: 300));
 
@@ -3473,7 +3623,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Try multiple times to ensure camera focuses
       for (int i = 0; i < 3; i++) {
         if (!mounted) break;
-        
+
         await _setCameraToNavigationMode(_viewModel.currentLocation!);
         if (i < 2) {
           await Future.delayed(const Duration(milliseconds: 200));
@@ -3536,35 +3686,39 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Wait a bit for simulation to start
       await Future.delayed(const Duration(milliseconds: 500));
     }
-    
+
     // CRITICAL: Check if already at end of current segment
     // If yes, move to next segment first before jumping
-    if (_viewModel.routeSegments.isNotEmpty && 
+    if (_viewModel.routeSegments.isNotEmpty &&
         _viewModel.currentSegmentIndex < _viewModel.routeSegments.length) {
-      final currentSegment = _viewModel.routeSegments[_viewModel.currentSegmentIndex];
-      if (currentSegment.points.isNotEmpty && _viewModel.currentLocation != null) {
+      final currentSegment =
+          _viewModel.routeSegments[_viewModel.currentSegmentIndex];
+      if (currentSegment.points.isNotEmpty &&
+          _viewModel.currentLocation != null) {
         final endPoint = currentSegment.points.last;
         final distanceToEnd = _calculateDistance(
           _viewModel.currentLocation!,
           endPoint,
         );
-        
+
         // If already at end of segment (within 20m), move to next segment first
-        if (distanceToEnd < 20 && _viewModel.currentSegmentIndex < _viewModel.routeSegments.length - 1) {
+        if (distanceToEnd < 20 &&
+            _viewModel.currentSegmentIndex <
+                _viewModel.routeSegments.length - 1) {
           _viewModel.moveToNextSegmentManually();
-          
+
           // Wait a moment for state update
           await Future.delayed(const Duration(milliseconds: 100));
         }
       }
     }
-    
+
     // Check if jumping to delivery point (segment 1) and update status
     final isJumpingToDelivery = _viewModel.currentSegmentIndex == 1;
-    
+
     // Jump to next segment in viewModel (await for status updates)
     await _viewModel.jumpToNextSegment();
-    
+
     // CRITICAL: Update order status to ONGOING_DELIVERED when jumping to delivery
     if (isJumpingToDelivery && _viewModel.orderWithDetails != null) {
       final orderDetailViewModel = Provider.of<OrderDetailViewModel>(
@@ -3572,21 +3726,21 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         listen: false,
       );
       await orderDetailViewModel.updateOrderStatusToOngoingDelivered();
-      _hasNotifiedNearDelivery = true; // Mark as notified to avoid duplicate updates
-    } else {
-    }
-    
+      _hasNotifiedNearDelivery =
+          true; // Mark as notified to avoid duplicate updates
+    } else {}
+
     // Update camera to new location
     if (_viewModel.currentLocation != null) {
       _updateLocationMarker(
         _viewModel.currentLocation!,
         _viewModel.currentBearing,
       );
-      
+
       if (_isFollowingUser) {
         _setCameraToNavigationMode(_viewModel.currentLocation!);
       }
-      
+
       // Send location update to server immediately after skip
       _globalLocationManager.sendLocationUpdate(
         _viewModel.currentLocation!.latitude,
@@ -3595,10 +3749,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         speed: _viewModel.currentSpeed,
         segmentIndex: _viewModel.currentSegmentIndex,
       );
-      
-      
     }
-    
+
     // Redraw routes to update current segment
     _drawRoutes();
     // Note: We don't manually trigger completion here.
@@ -3631,7 +3783,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   void _reportIncident() {
     // Get vehicle assignment ID from viewModel
     final vehicleAssignmentId = _viewModel.vehicleAssignmentId;
-    
+
     if (vehicleAssignmentId == null || vehicleAssignmentId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -3669,9 +3821,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3693,20 +3843,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             // Title
             const Text(
               'Đã đến điểm lấy hàng',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             // Message
             const Text(
               'Vui lòng chụp ảnh xác nhận hàng hóa và seal.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),
@@ -3716,13 +3860,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             child: ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop(); // Close dialog
-                
+
                 // Navigate to order detail and wait for result
-                final result = await Navigator.of(context).pushNamed(
-                  AppRoutes.orderDetail,
-                  arguments: widget.orderId,
-                );
-                
+                final result = await Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetail, arguments: widget.orderId);
+
                 // If result is true, seal was confirmed - resume simulation
                 if (result == true && mounted) {
                   if (_isPaused && _isSimulating) {
@@ -3740,10 +3883,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               ),
               child: const Text(
                 'Xác nhận',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -3754,15 +3894,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _showReturnDeliveryMessage() {
-    
-    
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3784,20 +3920,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             // Title
             const Text(
               'Đã đến điểm trả hàng',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             // Message
             const Text(
               'Vui lòng chụp ảnh xác nhận trả hàng.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),
@@ -3807,13 +3937,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             child: ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop(); // Close dialog
-                
+
                 // Navigate to order detail and wait for result
-                final result = await Navigator.of(context).pushNamed(
-                  AppRoutes.orderDetail,
-                  arguments: widget.orderId,
-                );
-                
+                final result = await Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetail, arguments: widget.orderId);
+
                 // If result is true, return delivery was confirmed - resume simulation
                 if (result == true && mounted) {
                   if (_isPaused && _isSimulating) {
@@ -3831,10 +3960,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               ),
               child: const Text(
                 'Chụp ảnh xác nhận',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -3845,15 +3971,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _showGenericWaypointMessage(String endPointName) {
-    
-    
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3875,20 +3997,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             // Title
             Text(
               'Đã đến $endPointName',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             // Message
             Text(
               'Bạn đã đến $endPointName. Vui lòng xác nhận để tiếp tục.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: const TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),
@@ -3898,13 +4014,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             child: ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop(); // Close dialog
-                
+
                 // Navigate to order detail and wait for result
-                final result = await Navigator.of(context).pushNamed(
-                  AppRoutes.orderDetail,
-                  arguments: widget.orderId,
-                );
-                
+                final result = await Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetail, arguments: widget.orderId);
+
                 // If result is true, resume simulation
                 if (result == true && mounted) {
                   if (_isPaused && _isSimulating) {
@@ -3922,10 +4037,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               ),
               child: const Text(
                 'Xác nhận',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -3936,21 +4048,15 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   }
 
   void _showDeliveryMessage() {
-    
-    
     // CRITICAL: Update order status to ONGOING_DELIVERED when showing delivery dialog
     // Fire and forget - don't wait for it to complete
-    
-    _updateOrderStatusOnDeliveryReached().then((_) {
-    }).catchError((e) {
-    });
+
+    _updateOrderStatusOnDeliveryReached().then((_) {}).catchError((e) {});
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3972,20 +4078,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             // Title
             const Text(
               'Đã đến điểm giao hàng',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             // Message
             const Text(
               'Vui lòng chụp ảnh xác nhận giao hàng.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),
@@ -3995,13 +4095,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             child: ElevatedButton(
               onPressed: () async {
                 Navigator.of(context).pop(); // Close dialog
-                
+
                 // Navigate to order detail and wait for result
-                final result = await Navigator.of(context).pushNamed(
-                  AppRoutes.orderDetail,
-                  arguments: widget.orderId,
-                );
-                
+                final result = await Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetail, arguments: widget.orderId);
+
                 // If result is true, delivery was confirmed - resume simulation
                 if (result == true && mounted) {
                   if (_isPaused && _isSimulating) {
@@ -4019,10 +4118,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               ),
               child: const Text(
                 'Chụp ảnh xác nhận',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -4038,8 +4134,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       // Call ViewModel method to update status (respects MVVM architecture)
       await _viewModel.updateToOngoingDelivered();
       _hasNotifiedNearDelivery = true; // Mark as notified
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   Future<bool?> _showCompleteTripConfirmation() {
@@ -4077,9 +4172,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -4101,20 +4194,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             // Title
             const Text(
               'Đã về đến đơn vị vận chuyển',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             // Message
             const Text(
               'Vui lòng chụp ảnh đồng hồ công tơ mét cuối để hoàn thành chuyến xe.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),
@@ -4124,13 +4211,12 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             child: ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Close dialog
-                
+
                 // Navigate to order detail to upload odometer
                 // OrderDetailScreen will handle stopping tracking after upload
-                Navigator.of(context).pushNamed(
-                  AppRoutes.orderDetail,
-                  arguments: widget.orderId,
-                );
+                Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetail, arguments: widget.orderId);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.purple.shade600,
@@ -4142,10 +4228,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
               ),
               child: const Text(
                 'Chụp ảnh đồng hồ',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -4154,7 +4237,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       ),
     );
   }
-
 
   // Track if we've already notified about near delivery
   bool _hasNotifiedNearDelivery = false;
@@ -4166,14 +4248,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     // 1. Currently in segment 1 (going to delivery point)
     // 2. Haven't notified yet
     // 3. Have order details
-    if (_viewModel.currentSegmentIndex != 1 || 
-        _hasNotifiedNearDelivery || 
+    if (_viewModel.currentSegmentIndex != 1 ||
+        _hasNotifiedNearDelivery ||
         _viewModel.orderWithDetails == null) {
       return;
     }
 
     // Get delivery point (last point of segment 1)
-    if (_viewModel.routeSegments.length <= 1 || 
+    if (_viewModel.routeSegments.length <= 1 ||
         _viewModel.routeSegments[1].points.isEmpty) {
       return;
     }
@@ -4182,12 +4264,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     final distanceMeters = _calculateDistance(currentLocation, deliveryPoint);
     final distanceKm = distanceMeters / 1000;
 
-    
-
     // If within 3km threshold, update order status
     if (distanceKm <= _nearDeliveryThresholdKm) {
       _hasNotifiedNearDelivery = true;
-      
+
       // Call OrderDetailViewModel to update status
       final orderDetailViewModel = Provider.of<OrderDetailViewModel>(
         context,
@@ -4205,7 +4285,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     final dLat = (end.latitude - start.latitude) * pi / 180;
     final dLon = (end.longitude - start.longitude) * pi / 180;
 
-    final a = sin(dLat / 2) * sin(dLat / 2) +
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
         cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
@@ -4230,7 +4311,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
   /// - Throttles to 60 FPS for ultra-smooth performance
   Future<void> _setCameraToNavigationMode(LatLng position) async {
     if (!_isMapOperationSafe) return;
-    
+
     // THROTTLE: Update camera every 16ms (60 FPS) for ultra-fast response
     // moveCamera is instant, so we can update at maximum frequency
     final now = DateTime.now();
@@ -4241,28 +4322,28 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       }
     }
     _lastCameraUpdate = now;
-    
+
     // Instant camera movement for absolute fastest response
     // moveCamera provides immediate positioning without any animation delay
-    
+
     // NORTH-UP ROTATING OFFSET:
     // - Map xoay theo bearing → route line thẳng đứng
     // - Camera offset về phía TRƯỚC (theo bearing)
     // - Marker ở bottom 1/3, counter-rotate để tĩnh
     LatLng cameraTarget = position;
-    
+
     if (_is3DMode && _viewModel.currentBearing != null) {
       // Offset về phía TRƯỚC theo hướng bearing
       // → Marker xuất hiện ở bottom 1/3
       const double offsetMeters = 60;
-      
+
       // Convert bearing to radians
       final double bearingRad = (_viewModel.currentBearing! * 3.14159) / 180.0;
-      
+
       // Calculate offset in bearing direction
       final double latOffset = offsetMeters * 0.000009 * cos(bearingRad);
       final double lngOffset = offsetMeters * 0.000009 * sin(bearingRad);
-      
+
       cameraTarget = LatLng(
         position.latitude + latOffset,
         position.longitude + lngOffset,
@@ -4271,30 +4352,33 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
 
     if (_is3DMode) {
       // North-Up Rotating: Map xoay, route line thẳng đứng
-      _mapController!.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: cameraTarget,
-            zoom: 17.5,
-            bearing: _viewModel.currentBearing ?? 0.0, // Map XOAY theo bearing
-            tilt: 55.0,
-          ),
-        ),
-      ).catchError((e) {
-      });
+      _mapController!
+          .moveCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: cameraTarget,
+                zoom: 17.5,
+                bearing:
+                    _viewModel.currentBearing ?? 0.0, // Map XOAY theo bearing
+                tilt: 55.0,
+              ),
+            ),
+          )
+          .catchError((e) {});
     } else {
       // 2D Overview Mode
-      _mapController!.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: position,
-            zoom: 15.0,
-            bearing: 0.0,
-            tilt: 0.0,
-          ),
-        ),
-      ).catchError((e) {
-      });
+      _mapController!
+          .moveCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: position,
+                zoom: 15.0,
+                bearing: 0.0,
+                tilt: 0.0,
+              ),
+            ),
+          )
+          .catchError((e) {});
     }
   }
 
@@ -4304,11 +4388,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
     if (_isInitializing) {
       return _buildInitializingScreen();
     }
-    
+
     if (_initializationError != null) {
       return _buildErrorScreen();
     }
-    
+
     // ✅ SIMPLE: Show navigation UI immediately after order loads (like route detail screen)
     // Map will render asynchronously via callbacks - no need to block UI
     return WillPopScope(
@@ -4405,12 +4489,13 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 ],
               ),
             ),
-            
+
             // 🆕 Pending Seal Replacement Banner
             if (_pendingSealReplacements.isNotEmpty)
               PendingSealReplacementBanner(
                 issue: _pendingSealReplacements.first,
-                onTap: () => _showConfirmSealSheet(_pendingSealReplacements.first),
+                onTap: () =>
+                    _showConfirmSealSheet(_pendingSealReplacements.first),
               ),
 
             // Loading indicator cho pending seals
@@ -4431,7 +4516,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             //       ],
             //     ),
             //   ),
-            
+
             // Loading indicator cho fuel consumption
             // if (_isLoadingFuelConsumption)
             //   Container(
@@ -4450,7 +4535,6 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             //       ],
             //     ),
             //   ),
-            
             Expanded(
               child: Container(
                 color: Colors.white,
@@ -4469,7 +4553,8 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                             myLocationEnabled: false,
                             myLocationTrackingMode:
                                 MyLocationTrackingMode.values[0],
-                            myLocationRenderMode: MyLocationRenderMode.values[0],
+                            myLocationRenderMode:
+                                MyLocationRenderMode.values[0],
                             trackCameraPosition: true,
                             onMapCreated: _onMapCreated,
                             onMapRenderedCallback: _onMapRendered,
@@ -4506,15 +4591,17 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                       Builder(
                         builder: (context) {
                           // Get ACTUAL camera bearing for exact counter-rotation
-                          final actualBearing = _mapController?.cameraPosition?.bearing ?? 0.0;
-                          
+                          final actualBearing =
+                              _mapController?.cameraPosition?.bearing ?? 0.0;
+
                           // CRITICAL: Matrix4 transformation - NO implicit animation
                           // This is the approach used in game engines and Google Maps SDK
                           // IMPORTANT: Counter-rotate in OPPOSITE direction (positive angle)
-                          final counterRotationAngle = actualBearing * 3.14159 / 180;
+                          final counterRotationAngle =
+                              actualBearing * 3.14159 / 180;
                           final transformMatrix = Matrix4.identity()
                             ..rotateZ(counterRotationAngle);
-                          
+
                           return StaticMarkerLayer(
                             mapController: _mapController!,
                             ignorePointer: true,
@@ -4524,8 +4611,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                                 height: 44,
                                 bearing: 0, // StaticMarker không xoay
                                 child: Transform(
-                                  key: ValueKey(actualBearing), // Force rebuild on bearing change
-                                  transform: transformMatrix, // Matrix4 - NO animation ✅
+                                  key: ValueKey(
+                                    actualBearing,
+                                  ), // Force rebuild on bearing change
+                                  transform:
+                                      transformMatrix, // Matrix4 - NO animation ✅
                                   alignment: Alignment.center,
                                   child: const StaticVehicleMarker(
                                     size: 44, // NO internal rotation ✅
@@ -4739,13 +4829,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                         Expanded(
                           child: ElevatedButton(
                             // ✅ CRITICAL: Only enable when data is ready and not loading
-                            onPressed: (!_isSimulating && _isDataReady && !_isLoadingOrder)
+                            onPressed:
+                                (!_isSimulating &&
+                                    _isDataReady &&
+                                    !_isLoadingOrder)
                                 ? _startSimulation
                                 : (_isSimulating
-                                    ? (_isPaused
-                                          ? _resumeSimulation
-                                          : _pauseSimulation)
-                                    : null), // Disable if data not ready
+                                      ? (_isPaused
+                                            ? _resumeSimulation
+                                            : _pauseSimulation)
+                                      : null), // Disable if data not ready
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
@@ -4766,7 +4859,9 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                                     height: 16,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
                                     ),
                                   )
                                 else
@@ -4782,12 +4877,16 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                                 Flexible(
                                   child: Text(
                                     _isLoadingOrder && !_isSimulating
-                                        ? (_loadOrderRetryCount > 0 
-                                            ? 'Thử lại ${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries' 
-                                            : 'Đang tải...')
+                                        ? (_loadOrderRetryCount > 0
+                                              ? 'Thử lại ${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries'
+                                              : 'Đang tải...')
                                         : (!_isSimulating
-                                            ? (!_isDataReady ? 'Chưa sẵn sàng' : 'Bắt đầu')
-                                            : (_isPaused ? 'Tiếp tục' : 'Tạm dừng')),
+                                              ? (!_isDataReady
+                                                    ? 'Chưa sẵn sàng'
+                                                    : 'Bắt đầu')
+                                              : (_isPaused
+                                                    ? 'Tiếp tục'
+                                                    : 'Tạm dừng')),
                                     style: const TextStyle(fontSize: 13),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -4814,10 +4913,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                                 children: [
                                   Icon(Icons.skip_next, size: 20),
                                   SizedBox(width: 4),
-                                  Text(
-                                    'Skip',
-                                    style: TextStyle(fontSize: 13),
-                                  ),
+                                  Text('Skip', style: TextStyle(fontSize: 13)),
                                 ],
                               ),
                             ),
@@ -4861,7 +4957,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   /// Build initializing screen với loading indicator
   Widget _buildInitializingScreen() {
     return Scaffold(
@@ -4875,41 +4971,18 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(
-              width: 60,
-              height: 60,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Đang tải thông tin lộ trình...',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_loadOrderRetryCount > 0)
-              Text(
-                'Đang thử lại (${_loadOrderRetryCount + 1}/$_maxLoadOrderRetries)...',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-              ),
-            const SizedBox(height: 32),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48),
-              child: Text(
-                'Vui lòng đợi trong giây lát',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  SkeletonLoader(height: 60, width: 60, borderRadius: 30),
+                  SizedBox(height: 24),
+                  SkeletonLoader(height: 20, width: 200),
+                  SizedBox(height: 12),
+                  SkeletonLoader(height: 16, width: 150),
+                  SizedBox(height: 32),
+                  SkeletonLoader(height: 16, width: 180),
+                ],
               ),
             ),
           ],
@@ -4917,7 +4990,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   /// Build map loading screen with detailed progress indicators
   Widget _buildMapLoadingScreen() {
     return Scaffold(
@@ -4942,13 +5015,10 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
             const SizedBox(height: 24),
             const Text(
               'Đang khởi tạo bản đồ dẫn đường...',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 32),
-            
+
             // Progress indicators
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -4977,17 +5047,14 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 32),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 48),
               child: Text(
                 'Vui lòng đợi trong giây lát. Bản đồ cần thời gian để tải và khởi tạo.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
             ),
           ],
@@ -4995,7 +5062,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   Widget _buildProgressItem(String label, bool isCompleted, IconData icon) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -5021,7 +5088,7 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
       ),
     );
   }
-  
+
   /// Build error screen với retry button
   Widget _buildErrorScreen() {
     return Scaffold(
@@ -5045,18 +5112,11 @@ class _NavigationScreenState extends State<NavigationScreen> with WidgetsBinding
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.error_outline,
-                size: 80,
-                color: Colors.red[300],
-              ),
+              Icon(Icons.error_outline, size: 80, color: Colors.red[300]),
               const SizedBox(height: 24),
               const Text(
                 'Không thể tải thông tin lộ trình',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),

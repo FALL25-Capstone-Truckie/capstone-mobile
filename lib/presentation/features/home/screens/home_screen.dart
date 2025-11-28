@@ -74,12 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
               tooltip: 'Làm mới',
             ),
-            IconButton(
-              icon: const Icon(Icons.notifications),
-              onPressed: () {
-                // TODO: Hiển thị thông báo
-              },
-            ),
           ],
         ),
         body: Consumer<AuthViewModel>(

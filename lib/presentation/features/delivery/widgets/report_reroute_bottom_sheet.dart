@@ -47,7 +47,7 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
 
   bool _isSubmitting = false;
   List<File> _selectedImages = [];
-  
+
   @override
   void initState() {
     super.initState();
@@ -145,9 +145,12 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
     }
 
     // Use NavigationViewModel's current segment index if available
-    if (widget.navigationViewModel.routeSegments.isNotEmpty && 
-        widget.navigationViewModel.currentSegmentIndex < activeJourney.first.journeySegments.length) {
-      return activeJourney.first.journeySegments[widget.navigationViewModel.currentSegmentIndex];
+    if (widget.navigationViewModel.routeSegments.isNotEmpty &&
+        widget.navigationViewModel.currentSegmentIndex <
+            activeJourney.first.journeySegments.length) {
+      return activeJourney.first.journeySegments[widget
+          .navigationViewModel
+          .currentSegmentIndex];
     }
 
     // Fallback: Get the first segment with status ACTIVE
@@ -155,7 +158,6 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
         .where((seg) => seg.status == 'ACTIVE')
         .firstOrNull;
   }
-
 
   Future<void> _submitRerouteIssue() async {
     if (!_formKey.currentState!.validate()) {
@@ -189,49 +191,50 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
         locationLongitude: widget.currentLocation?.longitude,
         images: _selectedImages,
       );
-      
+
       final issueId = issue.id;
       print('✅ Issue reported: $issueId');
 
       if (mounted) {
         // Close the report bottom sheet first
         Navigator.pop(context, true);
-        
+
         // 2️⃣ Show waiting dialog - CANNOT be dismissed by driver
         // Driver must wait for staff resolution or timeout
         showDialog(
           context: context,
-          barrierDismissible: false, // ⚠️ CRITICAL: Prevent tap outside to dismiss
-          builder: (context) => WaitingForResolutionDialog(
-            issueCategory: IssueCategory.reroute,
-          ),
+          barrierDismissible:
+              false, // ⚠️ CRITICAL: Prevent tap outside to dismiss
+          builder: (context) =>
+              WaitingForResolutionDialog(issueCategory: IssueCategory.reroute),
         );
-        
+
         // 3️⃣ Wait for resolution with Hybrid Pattern (WebSocket + Polling)
-        final resolvedIssue = await _resolutionHandler.reportAndWaitForResolution(
-          context: context,
-          issueId: issueId,
-          issueCategory: IssueCategory.reroute,
-          onTimeout: () {
-            // Timeout: Staff hasn't resolved after 5 minutes
-            if (mounted) {
-              Navigator.of(context).pop(); // Close waiting dialog
-              
-              showDialog(
-                context: context,
-                builder: (context) => ResolutionTimeoutDialog(
-                  issueCategory: IssueCategory.reroute,
-                  onDismiss: () => Navigator.of(context).pop(),
-                ),
-              );
-            }
-          },
-        );
-        
+        final resolvedIssue = await _resolutionHandler
+            .reportAndWaitForResolution(
+              context: context,
+              issueId: issueId,
+              issueCategory: IssueCategory.reroute,
+              onTimeout: () {
+                // Timeout: Staff hasn't resolved after 5 minutes
+                if (mounted) {
+                  Navigator.of(context).pop(); // Close waiting dialog
+
+                  showDialog(
+                    context: context,
+                    builder: (context) => ResolutionTimeoutDialog(
+                      issueCategory: IssueCategory.reroute,
+                      onDismiss: () => Navigator.of(context).pop(),
+                    ),
+                  );
+                }
+              },
+            );
+
         // 4️⃣ Handle resolution
         if (resolvedIssue != null && mounted) {
           Navigator.of(context).pop(); // Close waiting dialog
-          
+
           // ✅ FIX: Don't show duplicate dialog here
           // NotificationService will emit stream event and NavigationScreen will show dialog
           // This prevents dialog stacking issue where user has to dismiss 2 dialogs
@@ -253,7 +256,7 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
       }
     }
   }
-  
+
   /// ⚠️ DEPRECATED: Removed to fix dialog stacking issue
   /// NotificationService now handles the resolved dialog
   @Deprecated('Use NotificationService stream instead')
@@ -266,14 +269,16 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
     if (currentSegment == null) {
       return 'Không có đoạn đường nào đang hoạt động';
     }
-    
+
     // Use NavigationViewModel's segment name if available
-    if (widget.navigationViewModel.routeSegments.isNotEmpty && 
-        widget.navigationViewModel.currentSegmentIndex < widget.navigationViewModel.routeSegments.length) {
-      final routeSegmentName = widget.navigationViewModel.getCurrentSegmentName();
+    if (widget.navigationViewModel.routeSegments.isNotEmpty &&
+        widget.navigationViewModel.currentSegmentIndex <
+            widget.navigationViewModel.routeSegments.length) {
+      final routeSegmentName = widget.navigationViewModel
+          .getCurrentSegmentName();
       return '${currentSegment.segmentOrder}. $routeSegmentName';
     }
-    
+
     return '${currentSegment.segmentOrder}. ${currentSegment.startPointName} → ${currentSegment.endPointName}';
   }
 
@@ -346,10 +351,7 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      border: Border.all(
-                        color: AppColors.primary,
-                        width: 1,
-                      ),
+                      border: Border.all(color: AppColors.primary, width: 1),
                       borderRadius: BorderRadius.circular(8),
                       color: AppColors.primary.withOpacity(0.05),
                     ),
@@ -427,7 +429,7 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Selected Images Preview
                   if (_selectedImages.isNotEmpty)
                     Container(
@@ -447,7 +449,9 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                                   width: 100,
                                   height: 100,
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey.shade300),
+                                    border: Border.all(
+                                      color: Colors.grey.shade300,
+                                    ),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: ClipRRect(
@@ -455,14 +459,18 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                                     child: Image.file(
                                       imageFile,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return Container(
-                                          color: Colors.grey.shade100,
-                                          child: const Center(
-                                            child: Icon(Icons.broken_image, color: Colors.grey),
-                                          ),
-                                        );
-                                      },
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                            return Container(
+                                              color: Colors.grey.shade100,
+                                              child: const Center(
+                                                child: Icon(
+                                                  Icons.broken_image,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                            );
+                                          },
                                     ),
                                   ),
                                 ),
@@ -478,7 +486,10 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                                       decoration: BoxDecoration(
                                         color: Colors.red,
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 2),
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
                                       ),
                                       child: const Icon(
                                         Icons.close,
@@ -494,14 +505,16 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                         },
                       ),
                     ),
-                  
+
                   // Add Images Button
                   OutlinedButton.icon(
                     onPressed: _isSubmitting ? null : _pickImages,
                     icon: const Icon(Icons.add_photo_alternate_outlined),
-                    label: Text(_selectedImages.isEmpty 
-                        ? 'Thêm ảnh minh họa' 
-                        : 'Thêm ảnh khác (${_selectedImages.length}/5)'),
+                    label: Text(
+                      _selectedImages.isEmpty
+                          ? 'Thêm ảnh minh họa'
+                          : 'Thêm ảnh khác (${_selectedImages.length}/5)',
+                    ),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: Colors.grey.shade400),
                       shape: RoundedRectangleBorder(
@@ -527,9 +540,7 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.blue.shade200,
-                        ),
+                        border: Border.all(color: Colors.blue.shade200),
                       ),
                       child: Row(
                         children: [
@@ -558,9 +569,7 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                     decoration: BoxDecoration(
                       color: Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.orange.shade200,
-                      ),
+                      border: Border.all(color: Colors.orange.shade200),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -602,8 +611,9 @@ class _ReportRerouteBottomSheetState extends State<ReportRerouteBottomSheet> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : Text(

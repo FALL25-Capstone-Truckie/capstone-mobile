@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -6,11 +7,16 @@ import '../../account/screens/account_screen.dart';
 import '../../auth/viewmodels/auth_viewmodel.dart';
 import '../../home/screens/home_screen.dart';
 import '../../orders/screens/orders_screen.dart';
+import '../../notification/viewmodels/notification_viewmodel.dart';
+import '../../notification/widgets/notification_badge.dart';
+import '../../notification/screens/notification_list_screen.dart';
 import '../../../theme/app_colors.dart';
+import '../../../../app/app_routes.dart';
+import '../../../../core/services/notification_service.dart';
 
 class MainScreen extends StatefulWidget {
   final int initialTab;
-  
+
   const MainScreen({super.key, this.initialTab = 0});
 
   @override
@@ -19,12 +25,52 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
+  StreamSubscription<Map<String, dynamic>>? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
     // Initialize selected index from widget parameter
     _selectedIndex = widget.initialTab;
+
+    // Initialize NotificationViewModel when main screen loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+      if (authViewModel.driver != null) {
+        final notificationViewModel = Provider.of<NotificationViewModel>(
+          context,
+          listen: false,
+        );
+        notificationViewModel.initialize();
+        
+        // Subscribe to WebSocket for real-time badge updates
+        _subscribeToWebSocket(notificationViewModel);
+      }
+    });
+  }
+
+  /// Subscribe to WebSocket notifications for real-time badge updates
+  void _subscribeToWebSocket(NotificationViewModel notificationViewModel) {
+    final notificationService = NotificationService();
+    
+    _notificationSubscription = notificationService.notificationStream.listen(
+      (notification) {
+        debugPrint('🔔 [MainScreen] New notification received - updating badge');
+        // Refresh notification stats to update badge count
+        notificationViewModel.refresh();
+      },
+      onError: (error) {
+        debugPrint('❌ [MainScreen] WebSocket error: $error');
+      },
+    );
+    
+    debugPrint('✅ [MainScreen] Subscribed to WebSocket for badge updates');
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
   }
 
   // Tạo màn hình tương ứng với tab được chọn
@@ -35,6 +81,8 @@ class _MainScreenState extends State<MainScreen> {
       case 1:
         return const OrdersScreen();
       case 2:
+        return const NotificationListScreen();
+      case 3:
         return const AccountScreen();
       default:
         return const HomeScreen();
@@ -104,8 +152,8 @@ class _MainScreenState extends State<MainScreen> {
             children: [
               _buildNavItem(0, Icons.home, 'Trang chủ'),
               _buildNavItem(1, Icons.list_alt, 'Đơn hàng'),
-              // _buildNavItem(2, Icons.map, 'Dẫn đường'),
-              _buildNavItem(2, Icons.person, 'Tài khoản'),
+              _buildNotificationNavItem(),
+              _buildNavItem(3, Icons.person, 'Tài khoản'),
             ],
           ),
         ),
@@ -137,6 +185,76 @@ class _MainScreenState extends State<MainScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildNotificationNavItem() {
+    final isSelected = _selectedIndex == 2;
+    return Consumer<NotificationViewModel>(
+      builder: (context, notificationViewModel, child) {
+        final unreadCount = notificationViewModel.unreadCount;
+
+        return InkWell(
+          onTap: () => _onItemTapped(2),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      Icons.notifications,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: -8,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Center(
+                            child: Text(
+                              unreadCount > 99 ? '99+' : unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Thông báo',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

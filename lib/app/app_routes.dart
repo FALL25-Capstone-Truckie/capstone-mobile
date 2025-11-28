@@ -20,6 +20,7 @@ import '../presentation/features/orders/screens/pre_delivery_documentation_scree
 import '../presentation/features/orders/screens/route_details_screen.dart';
 import '../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../presentation/features/splash/screens/splash_screen.dart';
+import '../presentation/features/notification/screens/notification_list_screen.dart';
 
 class AppRoutes {
   // Route names
@@ -41,6 +42,7 @@ class AppRoutes {
   static const String routeDetails = '/route-details';
   static const String navigation = '/navigation';
   static const String issueDetail = '/issue-detail';
+  static const String notifications = '/notifications';
 
   // Route generator
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -156,6 +158,13 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) => ResponsiveWrapper(
             child: IssueDetailScreen(issue: issue),
+          ),
+        );
+
+      case notifications:
+        return MaterialPageRoute(
+          builder: (_) => ResponsiveWrapper(
+            child: const NotificationListScreen(),
           ),
         );
 

@@ -17,7 +17,7 @@ class DebugOverlay extends StatelessWidget {
         onPressed: () {
           // Check connection status
           NotificationService().checkConnectionStatus();
-          
+
           // Show snackbar
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

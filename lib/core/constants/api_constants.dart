@@ -4,6 +4,7 @@ class ApiConstants {
   ApiConstants._();
 
   /// Base API URL for development (Android Emulator)
+  /// NOTE: Already includes /api/v1 prefix - do NOT add /api/v1 to endpoint paths!
   static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
 
   /// WebSocket base URL for development (Android Emulator)
@@ -49,7 +50,8 @@ class ApiConstants {
 
   /// Get order details for driver by order ID
   /// Usage: GET /orders/get-order-for-driver-by-order-id/{orderId}
-  static const String getOrderDetailsForDriver = '/orders/get-order-for-driver-by-order-id';
+  static const String getOrderDetailsForDriver =
+      '/orders/get-order-for-driver-by-order-id';
 
   /// Update order status to ONGOING_DELIVERED (within 3km of delivery point)
   /// Usage: PUT /orders/{orderId}/start-ongoing-delivery
@@ -68,7 +70,8 @@ class ApiConstants {
   // ============================================================================
   /// Document loading and seal endpoint
   /// POST multipart form data with packing proof images and seal image
-  static const String documentLoadingAndSeal = '/loading-documentation/document-loading-and-seal';
+  static const String documentLoadingAndSeal =
+      '/loading-documentation/document-loading-and-seal';
 
   // ============================================================================
   // PHOTO COMPLETION ENDPOINTS
@@ -79,18 +82,21 @@ class ApiConstants {
 
   /// Upload multiple photo completion images
   /// POST multipart form data with multiple image files
-  static const String uploadMultiplePhotoCompletion = '/photo-completions/upload-multiple';
+  static const String uploadMultiplePhotoCompletion =
+      '/photo-completions/upload-multiple';
 
   // ============================================================================
   // VEHICLE FUEL CONSUMPTION ENDPOINTS
   // ============================================================================
   /// Update final odometer reading with image
   /// PUT multipart form data with odometer image
-  static const String updateFinalReading = '/vehicle-fuel-consumptions/final-reading';
+  static const String updateFinalReading =
+      '/vehicle-fuel-consumptions/final-reading';
 
   /// Get fuel consumption by vehicle assignment ID
   /// Usage: GET /vehicle-fuel-consumptions/vehicle-assignment/{vehicleAssignmentId}
-  static const String getFuelConsumption = '/vehicle-fuel-consumptions/vehicle-assignment';
+  static const String getFuelConsumption =
+      '/vehicle-fuel-consumptions/vehicle-assignment';
 
   // ============================================================================
   // REQUEST TIMEOUT CONFIGURATIONS

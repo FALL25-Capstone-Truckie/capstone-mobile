@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../viewmodels/order_list_viewmodel.dart';
 import '../widgets/order_item.dart';
 import 'order_detail_screen.dart';
+import '../../../common_widgets/skeleton_loader.dart';
 
 class OrderListScreen extends StatefulWidget {
   const OrderListScreen({super.key});
@@ -76,7 +77,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
             child: Consumer<OrderListViewModel>(
               builder: (context, viewModel, child) {
                 if (viewModel.state == OrderListState.loading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const OrdersSkeletonList(itemCount: 3);
                 } else if (viewModel.state == OrderListState.error) {
                   return _buildErrorView(viewModel.errorMessage);
                 } else if (viewModel.state == OrderListState.loaded) {

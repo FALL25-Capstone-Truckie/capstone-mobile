@@ -1,4 +1,4 @@
-package com.truckie.capstone_mobile
+package com.truckie.truckie_mobile
 
 import io.flutter.embedding.android.FlutterActivity
 
