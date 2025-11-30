@@ -163,18 +163,14 @@ class _RouteMapSectionState extends State<RouteMapSection>
       return false;
     }
     
-    final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
-    if (vehicleAssignmentId == null) {
+    // CRITICAL FIX: Use getCurrentUserVehicleAssignment() instead of orderDetails.first
+    // Bug: orderDetails.first might belong to another driver's trip in multi-trip orders
+    final vehicleAssignment = widget.viewModel.getCurrentUserVehicleAssignment();
+    if (vehicleAssignment == null) {
       return false;
     }
     
-    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
-      (va) => va.id == vehicleAssignmentId,
-      orElse: () => null,
-    );
-    
-    return vehicleAssignment != null &&
-        vehicleAssignment.journeyHistories.isNotEmpty &&
+    return vehicleAssignment.journeyHistories.isNotEmpty &&
         vehicleAssignment.journeyHistories.first.journeySegments.isNotEmpty;
   }
 
@@ -183,12 +179,9 @@ class _RouteMapSectionState extends State<RouteMapSection>
       return const SizedBox.shrink();
     }
 
-    final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
-    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments.firstWhere(
-      (va) => va.id == vehicleAssignmentId,
-      orElse: () => null,
-    );
-    
+    // CRITICAL FIX: Use getCurrentUserVehicleAssignment() instead of orderDetails.first
+    // Bug: Would show route of another driver's trip in multi-trip orders
+    final vehicleAssignment = widget.viewModel.getCurrentUserVehicleAssignment();
     if (vehicleAssignment == null) {
       return const SizedBox.shrink();
     }
@@ -198,7 +191,7 @@ class _RouteMapSectionState extends State<RouteMapSection>
     // Tính tổng khoảng cách
     double totalDistanceKm = journeySegments.fold(
       0.0,
-      (sum, segment) => sum + segment.distanceMeters,
+      (sum, segment) => sum + segment.distanceKilometers,
     );
 
     return Column(
@@ -234,17 +227,17 @@ class _RouteMapSectionState extends State<RouteMapSection>
 
   Widget _buildSegmentInfoItem(JourneySegment segment, Color color, int index) {
     // Format distance in km
-    final distanceKm = (segment.distanceMeters).toStringAsFixed(2);
+    final distanceKm = (segment.distanceKilometers).toStringAsFixed(2);
 
     // Chuyển đổi tên điểm đầu/cuối sang tiếng Việt
     String startPointName = segment.startPointName;
     String endPointName = segment.endPointName;
 
-    if (startPointName == "Carrier") startPointName = "Kho";
+    if (startPointName == "Carrier") startPointName = "Đơn vị vận chuyển";
     if (startPointName == "Pickup") startPointName = "Lấy hàng";
     if (startPointName == "Delivery") startPointName = "Giao hàng";
 
-    if (endPointName == "Carrier") endPointName = "Kho";
+    if (endPointName == "Carrier") endPointName = "Đơn vị vận chuyển";
     if (endPointName == "Pickup") endPointName = "Lấy hàng";
     if (endPointName == "Delivery") endPointName = "Giao hàng";
 
@@ -353,7 +346,6 @@ class _RouteMapSectionState extends State<RouteMapSection>
       });
 
       // Debug thông tin
-      debugPrint('VietMap controller created');
     }
   }
 
@@ -362,9 +354,6 @@ class _RouteMapSectionState extends State<RouteMapSection>
         !_isMapReady ||
         _isDisposed ||
         !_isMapInitialized) {
-      debugPrint(
-        'Cannot draw routes: controller=${_mapController != null}, ready=$_isMapReady, initialized=$_isMapInitialized',
-      );
       return;
     }
 
@@ -384,8 +373,6 @@ class _RouteMapSectionState extends State<RouteMapSection>
       for (int i = 0; i < widget.viewModel.routeSegments.length; i++) {
         final route = widget.viewModel.routeSegments[i];
         if (route.isEmpty) continue;
-
-        debugPrint('Drawing route $i with ${route.length} points');
         allPoints.addAll(route);
 
         // Lấy màu cho đoạn đường này
@@ -440,7 +427,7 @@ class _RouteMapSectionState extends State<RouteMapSection>
         } else if (i == widget.viewModel.routeSegments.length - 1) {
           endMarkerColor = Colors.orange; // Back to Carrier
           endMarkerIcon = Icons.warehouse;
-          endMarkerLabel = 'Kho';
+          endMarkerLabel = 'Đơn vị vận chuyển';
         } else {
           endMarkerColor = Colors.red; // Delivery
           endMarkerIcon = Icons.local_shipping;
@@ -503,11 +490,8 @@ class _RouteMapSectionState extends State<RouteMapSection>
             ),
           ),
         );
-
-        debugPrint('Camera moved to show all routes');
       }
     } catch (e) {
-      debugPrint('Error drawing routes: $e');
       if (!_isDisposed) {
         setState(() {
           _hasError = true;

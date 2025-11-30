@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../viewmodels/order_list_viewmodel.dart';
 import '../widgets/order_item.dart';
 import 'order_detail_screen.dart';
+import '../../../common_widgets/skeleton_loader.dart';
 
 class OrderListScreen extends StatefulWidget {
   const OrderListScreen({super.key});
@@ -19,12 +20,16 @@ class _OrderListScreenState extends State<OrderListScreen> {
   bool _isInitialized = false;
 
   final List<Map<String, dynamic>> _statusFilters = [
-    {'value': '', 'label': 'Tất cả'},
-    {'value': 'ASSIGNED_TO_DRIVER', 'label': 'Đã giao cho tài xế'},
-    {'value': 'PICKED_UP', 'label': 'Đã lấy hàng'},
-    {'value': 'DELIVERING', 'label': 'Đang giao'},
-    {'value': 'DELIVERED', 'label': 'Đã giao'},
-    {'value': 'CANCELLED', 'label': 'Đã hủy'},
+    {'value': '', 'label': 'Tất cả', 'statuses': []},
+    {'value': 'WAITING', 'label': 'Chờ lấy hàng', 'statuses': ['ASSIGNED_TO_DRIVER', 'FULLY_PAID']},
+    {'value': 'PICKING_UP', 'label': 'Đang lấy hàng', 'statuses': ['PICKING_UP']},
+    {'value': 'DELIVERING', 'label': 'Đang giao', 'statuses': ['ON_DELIVERED', 'ONGOING_DELIVERED']},
+    {'value': 'DELIVERED', 'label': 'Đã giao', 'statuses': ['DELIVERED']},
+    {'value': 'SUCCESSFUL', 'label': 'Hoàn thành', 'statuses': ['SUCCESSFUL']},
+    {'value': 'IN_TROUBLES', 'label': 'Gặp sự cố', 'statuses': ['IN_TROUBLES', 'COMPENSATION']},
+    {'value': 'RETURNING', 'label': 'Đang trả hàng', 'statuses': ['RETURNING']},
+    {'value': 'RETURNED', 'label': 'Đã trả hàng', 'statuses': ['RETURNED']},
+    {'value': 'CANCELLED', 'label': 'Đã hủy', 'statuses': ['CANCELLED']},
   ];
 
   @override
@@ -45,7 +50,6 @@ class _OrderListScreenState extends State<OrderListScreen> {
         listen: false,
       ).getDriverOrders();
     } catch (e) {
-      debugPrint('Error loading orders: $e');
       // Nếu có lỗi, thử lại sau 1 giây
       Future.delayed(const Duration(seconds: 1), () {
         if (mounted) {
@@ -73,7 +77,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
             child: Consumer<OrderListViewModel>(
               builder: (context, viewModel, child) {
                 if (viewModel.state == OrderListState.loading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const OrdersSkeletonList(itemCount: 3);
                 } else if (viewModel.state == OrderListState.error) {
                   return _buildErrorView(viewModel.errorMessage);
                 } else if (viewModel.state == OrderListState.loaded) {
@@ -235,10 +239,23 @@ class _OrderListScreenState extends State<OrderListScreen> {
 
   List<dynamic> _getFilteredOrders(OrderListViewModel viewModel) {
     var filteredOrders = viewModel.orders;
+    final cancelledInInput = filteredOrders.where((o) => o.status == 'CANCELLED').length;
+    if (cancelledInInput > 0) {
+    }
 
     // Lọc theo trạng thái
     if (_selectedStatus.isNotEmpty) {
-      filteredOrders = viewModel.getOrdersByStatus(_selectedStatus);
+      final selectedFilter = _statusFilters.firstWhere(
+        (filter) => filter['value'] == _selectedStatus,
+        orElse: () => {'value': '', 'label': '', 'statuses': []},
+      );
+      
+      final List<String> allowedStatuses = List<String>.from(selectedFilter['statuses'] ?? []);
+      if (allowedStatuses.isNotEmpty) {
+        filteredOrders = filteredOrders
+            .where((order) => allowedStatuses.contains(order.status))
+            .toList();
+      }
     }
 
     // Lọc theo từ khóa tìm kiếm
@@ -247,12 +264,24 @@ class _OrderListScreenState extends State<OrderListScreen> {
 
       // Nếu đang lọc theo trạng thái, cần lọc thêm lần nữa
       if (_selectedStatus.isNotEmpty) {
-        filteredOrders = filteredOrders
-            .where((order) => order.status == _selectedStatus)
-            .toList();
+        final selectedFilter = _statusFilters.firstWhere(
+          (filter) => filter['value'] == _selectedStatus,
+          orElse: () => {'value': '', 'label': '', 'statuses': []},
+        );
+        
+        final List<String> allowedStatuses = List<String>.from(selectedFilter['statuses'] ?? []);
+        
+        if (allowedStatuses.isNotEmpty) {
+          filteredOrders = filteredOrders
+              .where((order) => allowedStatuses.contains(order.status))
+              .toList();
+        }
       }
     }
 
+    final cancelledInOutput = filteredOrders.where((o) => o.status == 'CANCELLED').length;
+    
+    
     return filteredOrders;
   }
 
@@ -267,7 +296,6 @@ class _OrderListScreenState extends State<OrderListScreen> {
     
     // Reload orders when coming back from detail screen if result is true
     if (mounted && result == true) {
-      debugPrint('🔄 Reloading orders after returning from detail screen');
       _loadOrders();
     }
   }

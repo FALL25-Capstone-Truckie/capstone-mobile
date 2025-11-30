@@ -18,7 +18,7 @@ class VehicleWebSocketService {
   Timer? _reconnectTimer;
   Timer? _connectionTimeoutTimer; // Timeout for connection attempts
   int _reconnectAttempts = 0;
-  final int _maxReconnectAttempts = 10;
+  final int _maxReconnectAttempts = 15; // Increased from 10 to 15
   final int _connectionTimeoutSeconds = 10; // Timeout after 10 seconds
 
   // Store callbacks for reconnection
@@ -43,20 +43,35 @@ class VehicleWebSocketService {
 
   String _cleanToken(String raw) => raw.replaceAll('#', '').trim();
 
+  /// Get latest access token from TokenStorageService
+  /// This ensures we always use the most up-to-date token, even after refresh
+  String? _getLatestToken() {
+    try {
+      final tokenStorage = GetIt.instance<TokenStorageService>();
+      final token = tokenStorage.getAccessToken();
+      
+      if (token != null) {
+        // Update stored token with latest one
+        _storedJwtToken = token;
+      }
+      
+      return token;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Try to refresh token when 401 error occurs
   Future<String?> _tryRefreshToken() async {
     try {
-      debugPrint('🔄 Attempting to refresh token due to 401 error...');
       
       final tokenStorageService = GetIt.instance<TokenStorageService>();
       final refreshToken = await tokenStorageService.getRefreshToken();
       
       if (refreshToken == null || refreshToken.isEmpty) {
-        debugPrint('❌ No refresh token available');
         return null;
       }
       
-      debugPrint('✅ Refresh token found, calling refresh API...');
       
       // CRITICAL: Call actual refresh token API
       try {
@@ -65,8 +80,6 @@ class VehicleWebSocketService {
         final requestData = {
           'refreshToken': refreshToken,
         };
-        debugPrint('🔄 [VehicleWebSocket] Request data: $requestData');
-        debugPrint('🔄 [VehicleWebSocket] Request data type: ${requestData.runtimeType}');
         
         // Try manual JSON encoding to ensure body is sent correctly
         final response = await apiClient.dio.post(
@@ -80,12 +93,10 @@ class VehicleWebSocketService {
           final newRefreshToken = tokenData['refreshToken'];
           
           if (newAccessToken == null || newAccessToken.isEmpty) {
-            debugPrint('❌ Backend did not return new access token');
             return null;
           }
           
           if (newRefreshToken == null || newRefreshToken.isEmpty) {
-            debugPrint('❌ Backend did not return new refresh token');
             return null;
           }
           
@@ -93,20 +104,14 @@ class VehicleWebSocketService {
           await tokenStorageService.saveAccessToken(newAccessToken);
           await tokenStorageService.saveRefreshToken(newRefreshToken);
           
-          debugPrint('✅ Token refresh successful, new tokens obtained');
-          debugPrint('✅ New access token: ${newAccessToken.substring(0, 20)}...');
-          debugPrint('✅ New refresh token: ${newRefreshToken.substring(0, 20)}...');
           return newAccessToken;
         } else {
-          debugPrint('❌ Token refresh API returned error: ${response.data['message']}');
           return null;
         }
       } catch (apiError) {
-        debugPrint('❌ Token refresh API call failed: $apiError');
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Error during token refresh: $e');
       return null;
     }
   }
@@ -139,7 +144,6 @@ class VehicleWebSocketService {
     _connectionTimeoutTimer?.cancel();
     _connectionTimeoutTimer = Timer(Duration(seconds: _connectionTimeoutSeconds), () {
       if (_connectionStatus == WebSocketConnectionStatus.connecting) {
-        debugPrint('⏱️ Connection timeout after ${_connectionTimeoutSeconds}s');
         
         final errorMsg = 'Connection timeout';
         _lastError = errorMsg;
@@ -150,9 +154,10 @@ class VehicleWebSocketService {
         _disconnectClient();
         _storedOnError?.call(errorMsg);
         
-        if (_storedJwtToken != null && _currentVehicleId != null) {
+        final latestToken = _getLatestToken();
+        if (latestToken != null && _currentVehicleId != null) {
           _scheduleReconnect(
-            _storedJwtToken!,
+            latestToken,
             _currentVehicleId!,
             _storedOnConnected,
             _storedOnError,
@@ -164,14 +169,12 @@ class VehicleWebSocketService {
 
     // Sử dụng endpoint mới /vehicle-tracking
     final wsUrl = '$baseUrl/vehicle-tracking';
-    debugPrint('Connecting to WebSocket URL: $wsUrl');
 
     _client = StompClient(
       config: StompConfig(
         url: wsUrl,
         webSocketConnectHeaders: {'Authorization': 'Bearer $cleanToken'},
         onConnect: (frame) {
-          debugPrint('✅ WebSocket connected for vehicle: $vehicleId');
 
           // CRITICAL: Cancel ALL pending timers to prevent reconnect loop
           _connectionTimeoutTimer?.cancel();
@@ -195,7 +198,6 @@ class VehicleWebSocketService {
         },
         onStompError: (frame) {
           final errorMsg = 'STOMP Error: ${frame.body}';
-          debugPrint('❌ $errorMsg');
 
           _lastError = errorMsg;
           _connectionStatus = WebSocketConnectionStatus.error;
@@ -205,29 +207,24 @@ class VehicleWebSocketService {
 
           // CRITICAL: Check for 401 Unauthorized error
           if (errorMsg.contains('401') || errorMsg.contains('Unauthorized')) {
-            debugPrint('🔐 401 Unauthorized detected - attempting token refresh...');
             _handleUnauthorizedError();
           } else {
             // CRITICAL: Always try to reconnect on STOMP errors
-            if (_storedJwtToken != null && _currentVehicleId != null) {
-              debugPrint('🔄 STOMP error - scheduling reconnect...');
+            final latestToken = _getLatestToken();
+            if (latestToken != null && _currentVehicleId != null) {
               _scheduleReconnect(
-                _storedJwtToken!,
+                latestToken,
                 _currentVehicleId!,
                 _storedOnConnected,
                 _storedOnError,
                 _storedOnLocationBroadcast,
               );
             } else {
-              debugPrint('❌ Cannot reconnect after STOMP error: missing credentials');
-              debugPrint('   Token: ${_storedJwtToken != null ? "present" : "missing"}');
-              debugPrint('   VehicleId: ${_currentVehicleId ?? "missing"}');
             }
           }
         },
         onWebSocketError: (error) {
           final errorMsg = 'WebSocket Error: $error';
-          debugPrint('❌ $errorMsg');
 
           _lastError = errorMsg;
           _connectionStatus = WebSocketConnectionStatus.error;
@@ -237,28 +234,23 @@ class VehicleWebSocketService {
 
           // CRITICAL: Check for 401 Unauthorized error
           if (errorMsg.contains('401') || errorMsg.contains('Unauthorized')) {
-            debugPrint('🔐 401 Unauthorized detected - attempting token refresh...');
             _handleUnauthorizedError();
           } else {
             // CRITICAL: Always try to reconnect on WebSocket errors
-            if (_storedJwtToken != null && _currentVehicleId != null) {
-              debugPrint('🔄 WebSocket error - scheduling reconnect...');
+            final latestToken = _getLatestToken();
+            if (latestToken != null && _currentVehicleId != null) {
               _scheduleReconnect(
-                _storedJwtToken!,
+                latestToken,
                 _currentVehicleId!,
                 _storedOnConnected,
                 _storedOnError,
                 _storedOnLocationBroadcast,
               );
             } else {
-              debugPrint('❌ Cannot reconnect after WebSocket error: missing credentials');
-              debugPrint('   Token: ${_storedJwtToken != null ? "present" : "missing"}');
-              debugPrint('   VehicleId: ${_currentVehicleId ?? "missing"}');
             }
           }
         },
         onDisconnect: (frame) {
-          debugPrint('🔌 WebSocket disconnected');
 
           _connectionStatus = WebSocketConnectionStatus.disconnected;
           _connectionStatusController.add(_connectionStatus);
@@ -268,17 +260,16 @@ class VehicleWebSocketService {
           _storedOnError?.call(errorMsg);
           
           // Try to reconnect automatically using stored credentials
-          if (_storedJwtToken != null && _currentVehicleId != null) {
-            debugPrint('🔄 Scheduling auto-reconnect after disconnect...');
+          final latestToken = _getLatestToken();
+          if (latestToken != null && _currentVehicleId != null) {
             _scheduleReconnect(
-              _storedJwtToken!,
+              latestToken,
               _currentVehicleId!,
               _storedOnConnected,
               _storedOnError,
               _storedOnLocationBroadcast,
             );
           } else {
-            debugPrint('⚠️ Cannot auto-reconnect: missing stored credentials');
           }
         },
         reconnectDelay: const Duration(seconds: 0), // Disable auto-reconnect, use manual reconnect
@@ -291,7 +282,6 @@ class VehicleWebSocketService {
       _client!.activate();
     } catch (e) {
       final errorMsg = 'Connection failed: $e';
-      debugPrint('❌ $errorMsg');
 
       _lastError = errorMsg;
       _connectionStatus = WebSocketConnectionStatus.error;
@@ -300,34 +290,29 @@ class VehicleWebSocketService {
       _storedOnError?.call(errorMsg);
 
       // CRITICAL: Always try to reconnect on connection failure
-      if (_storedJwtToken != null && _currentVehicleId != null) {
-        debugPrint('🔄 Connection failed - scheduling reconnect...');
+      final latestToken = _getLatestToken();
+      if (latestToken != null && _currentVehicleId != null) {
         _scheduleReconnect(
-          _storedJwtToken!,
+          latestToken,
           _currentVehicleId!,
           _storedOnConnected,
           _storedOnError,
           _storedOnLocationBroadcast,
         );
       } else {
-        debugPrint('❌ Cannot reconnect after connection failure: missing credentials');
-        debugPrint('   Token: ${_storedJwtToken != null ? "present" : "missing"}');
-        debugPrint('   VehicleId: ${_currentVehicleId ?? "missing"}');
       }
     }
   }
 
   /// Handle 401 Unauthorized error by attempting token refresh
   void _handleUnauthorizedError() {
-    debugPrint('🔐 Handling 401 Unauthorized error...');
     
     // Disconnect current client
     _disconnectClient();
     
     // Try to refresh token
     _tryRefreshToken().then((newToken) {
-      if (newToken != null && _storedJwtToken != null && _currentVehicleId != null) {
-        debugPrint('✅ Token refreshed, attempting reconnect with new token...');
+      if (newToken != null && _currentVehicleId != null) {
         
         // Update stored token with new one
         _storedJwtToken = newToken;
@@ -341,31 +326,37 @@ class VehicleWebSocketService {
           _storedOnLocationBroadcast,
         );
       } else {
-        debugPrint('❌ Token refresh failed, scheduling regular reconnect...');
         
-        // Fall back to regular reconnect with exponential backoff
-        if (_storedJwtToken != null && _currentVehicleId != null) {
+        // Try to get latest token from TokenStorageService
+        final latestToken = _getLatestToken();
+        
+        if (latestToken != null && _currentVehicleId != null) {
           _scheduleReconnect(
-            _storedJwtToken!,
+            latestToken,
             _currentVehicleId!,
             _storedOnConnected,
             _storedOnError,
             _storedOnLocationBroadcast,
           );
+        } else {
+          _storedOnError?.call('No access token available');
         }
       }
     }).catchError((e) {
-      debugPrint('❌ Error during token refresh: $e');
       
-      // Fall back to regular reconnect
-      if (_storedJwtToken != null && _currentVehicleId != null) {
+      // Try to get latest token from TokenStorageService
+      final latestToken = _getLatestToken();
+      
+      if (latestToken != null && _currentVehicleId != null) {
         _scheduleReconnect(
-          _storedJwtToken!,
+          latestToken,
           _currentVehicleId!,
           _storedOnConnected,
           _storedOnError,
           _storedOnLocationBroadcast,
         );
+      } else {
+        _storedOnError?.call('No access token available');
       }
     });
   }
@@ -380,41 +371,49 @@ class VehicleWebSocketService {
     // Cancel any existing reconnect timer
     _reconnectTimer?.cancel();
 
-    // Only attempt to reconnect if we haven't exceeded the maximum attempts
-    if (_reconnectAttempts < _maxReconnectAttempts) {
-      _reconnectAttempts++;
-
-      // Exponential backoff: 2^n * 1000 ms (1s, 2s, 4s, 8s, 16s)
-      final delay = Duration(
-        milliseconds: (1000 * _pow(2, _reconnectAttempts - 1)).toInt(),
-      );
-
-      debugPrint(
-        '📅 Scheduling reconnect attempt $_reconnectAttempts/$_maxReconnectAttempts in ${delay.inSeconds}s',
-      );
-
-      _reconnectTimer = Timer(delay, () {
-        debugPrint(
-          '🔄 Attempting to reconnect (attempt $_reconnectAttempts/$_maxReconnectAttempts)...',
-        );
-        
-        // Use stored callbacks to ensure they persist across reconnects
-        connect(
-          jwtToken: _storedJwtToken ?? jwtToken,
-          vehicleId: vehicleId,
-          onConnected: _storedOnConnected ?? onConnected,
-          onError: _storedOnError ?? onError,
-          onLocationBroadcast: _storedOnLocationBroadcast ?? onLocationBroadcast,
-        );
-      });
-    } else {
-      debugPrint('❌ Maximum reconnect attempts ($_maxReconnectAttempts) reached');
-      debugPrint('   Please restart the app or manually reconnect');
+    // Check if max attempts reached
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
       
-      // Notify error callback
-      final errorMsg = 'Maximum reconnect attempts reached';
-      _storedOnError?.call(errorMsg);
+      // Even after max retries, schedule one more attempt after longer delay
+      // This ensures GPS tracking keeps trying indefinitely
+      _reconnectTimer = Timer(const Duration(seconds: 60), () {
+        _reconnectAttempts = 0; // Reset counter for next round
+        _scheduleReconnect(jwtToken, vehicleId, onConnected, onError, onLocationBroadcast);
+      });
+      return;
     }
+
+    _reconnectAttempts++;
+
+    // Exponential backoff: 2^n * 1000 ms, capped at 32 seconds
+    final delayMs = (1000 * _pow(2, _reconnectAttempts - 1)).toInt().clamp(1000, 32000);
+    final delay = Duration(milliseconds: delayMs);
+
+
+    _reconnectTimer = Timer(delay, () {
+      
+      // CRITICAL: Always get latest token from TokenStorageService before reconnecting
+      final latestToken = _getLatestToken();
+      
+      if (latestToken == null) {
+        final errorMsg = 'No access token for reconnection';
+        _storedOnError?.call(errorMsg);
+        
+        // Schedule retry even without token (token might become available later)
+        _scheduleReconnect(jwtToken, vehicleId, onConnected, onError, onLocationBroadcast);
+        return;
+      }
+      
+      
+      // Use stored callbacks to ensure they persist across reconnects
+      connect(
+        jwtToken: latestToken,
+        vehicleId: vehicleId,
+        onConnected: _storedOnConnected ?? onConnected,
+        onError: _storedOnError ?? onError,
+        onLocationBroadcast: _storedOnLocationBroadcast ?? onLocationBroadcast,
+      );
+    });
   }
 
   void _subscribeToVehicleUpdates(
@@ -433,16 +432,11 @@ class VehicleWebSocketService {
           // This prevents camera focus issues if backend sends wrong vehicle data
           final receivedVehicleId = data['vehicleId']?.toString();
           if (receivedVehicleId != null && receivedVehicleId != vehicleId) {
-            debugPrint('⚠️ WARNING: Received location for wrong vehicle!');
-            debugPrint('   Expected: $vehicleId, Got: $receivedVehicleId');
-            debugPrint('   Ignoring this location update to prevent focus issues');
             return;
           }
           
-          debugPrint('📍 Vehicle $vehicleId location update: $data');
           onMessage?.call(data);
         } catch (e) {
-          debugPrint('Error parsing vehicle update: $e');
         }
       },
     );
@@ -455,17 +449,14 @@ class VehicleWebSocketService {
   void _subscribeToAllVehicles(Function(Map<String, dynamic>)? onMessage) {
     if (_client?.connected != true) return;
 
-    debugPrint('⚠️ WARNING: Subscribing to ALL vehicles - this should NOT be used in driver app!');
     
     _client!.subscribe(
       destination: '/topic/vehicles/locations',
       callback: (frame) {
         try {
           final data = jsonDecode(frame.body ?? '{}') as Map<String, dynamic>;
-          debugPrint('📍 All vehicles location update: $data');
           onMessage?.call(data);
         } catch (e) {
-          debugPrint('Error parsing all vehicles update: $e');
         }
       },
     );
@@ -479,11 +470,9 @@ class VehicleWebSocketService {
     required String licensePlateNumber,
   }) {
     if (_client?.connected != true) {
-      debugPrint('❌ Cannot send location: WebSocket not connected');
       
       // Trigger reconnection if we have stored connection info
       if (_storedJwtToken != null && _currentVehicleId != null) {
-        debugPrint('🔄 Attempting to reconnect WebSocket...');
         _triggerReconnection();
       }
       
@@ -502,15 +491,10 @@ class VehicleWebSocketService {
         body: jsonEncode(message),
       );
 
-      debugPrint(
-        '📤 Sent location update for vehicle $vehicleId: lat=$latitude, lng=$longitude',
-      );
     } catch (e) {
-      debugPrint('❌ Failed to send location update: $e');
       
       // Trigger reconnection on send failure
       if (_storedJwtToken != null && _currentVehicleId != null) {
-        debugPrint('🔄 Send failed, attempting to reconnect WebSocket...');
         _triggerReconnection();
       }
     }
@@ -526,11 +510,9 @@ class VehicleWebSocketService {
     double? speed,
   }) {
     if (_client?.connected != true) {
-      debugPrint('❌ Cannot send location: WebSocket not connected');
       
       // Trigger reconnection if we have stored connection info
       if (_storedJwtToken != null && _currentVehicleId != null) {
-        debugPrint('🔄 Attempting to reconnect WebSocket...');
         _triggerReconnection();
       }
       
@@ -547,27 +529,16 @@ class VehicleWebSocketService {
 
     final destination = '/app/vehicle/$vehicleId/location-rate-limited';
     
-    debugPrint('📤 Sending STOMP message:');
-    debugPrint('   - Destination: $destination');
-    debugPrint('   - VehicleId: $vehicleId');
-    debugPrint('   - Location: ($latitude, $longitude)');
-    debugPrint('   - License Plate: $licensePlateNumber');
-    if (bearing != null) debugPrint('   - Bearing: $bearing°');
-    if (speed != null) debugPrint('   - Speed: ${speed.toStringAsFixed(1)} km/h');
-    debugPrint('   - Body: ${jsonEncode(message)}');
 
     try {
       _client!.send(
         destination: destination,
         body: jsonEncode(message),
       );
-      debugPrint('✅ STOMP message sent successfully');
     } catch (e) {
-      debugPrint('❌ Failed to send STOMP message: $e');
       
       // Trigger reconnection on send failure
       if (_storedJwtToken != null && _currentVehicleId != null) {
-        debugPrint('🔄 Send failed, attempting to reconnect WebSocket...');
         _triggerReconnection();
       }
     }
@@ -577,23 +548,24 @@ class VehicleWebSocketService {
   void _triggerReconnection() {
     // Check if we have the necessary info to reconnect
     if (_storedJwtToken == null || _currentVehicleId == null) {
-      debugPrint('❌ Cannot trigger reconnection: missing stored credentials');
       return;
     }
     
     // Don't trigger if already scheduled
     if (_reconnectTimer != null && _reconnectTimer!.isActive) {
-      debugPrint('⚠️ Reconnection already scheduled, skipping trigger');
       return;
     }
     
-    debugPrint('🔄 Triggering immediate reconnection...');
-    debugPrint('   Current status: $_connectionStatus');
-    debugPrint('   Reconnect attempts: $_reconnectAttempts/$_maxReconnectAttempts');
     
-    // Schedule immediate reconnection (no delay for first attempt)
+    // Get latest token and schedule immediate reconnection
+    final latestToken = _getLatestToken();
+    if (latestToken == null) {
+      _storedOnError?.call('No access token for reconnection');
+      return;
+    }
+    
     _scheduleReconnect(
-      _storedJwtToken!,
+      latestToken,
       _currentVehicleId!,
       _storedOnConnected,
       _storedOnError,
@@ -629,7 +601,6 @@ class VehicleWebSocketService {
     _storedOnError = null;
     _storedOnLocationBroadcast = null;
     
-    debugPrint('🔌 WebSocket explicitly disconnected and callbacks cleared');
   }
 
   // Clean up resources

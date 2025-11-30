@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../../app/app_routes.dart';
 import '../../../../../core/services/global_location_manager.dart';
+import '../../../../../core/utils/sound_utils.dart';
 import '../../../../../app/di/service_locator.dart';
 import '../../../../utils/driver_role_checker.dart';
 import '../../../../../domain/entities/order_with_details.dart';
@@ -130,9 +131,6 @@ class _DeliveryConfirmationSectionState extends State<DeliveryConfirmationSectio
     setState(() {
       _isLoading = true;
     });
-
-    debugPrint('📸 Bắt đầu gửi ${_confirmationImages.length} ảnh xác nhận giao hàng...');
-
     try {
       final viewModel = Provider.of<OrderDetailViewModel>(
         context,
@@ -142,10 +140,10 @@ class _DeliveryConfirmationSectionState extends State<DeliveryConfirmationSectio
         imageFiles: _confirmationImages,
         description: 'Ảnh xác nhận khách hàng nhận hàng',
       );
-
-      debugPrint('📸 Kết quả gửi ảnh: $success');
-
       if (success) {
+        // Play success sound for delivery confirmation
+        SoundUtils.playSuccessSound();
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -154,13 +152,19 @@ class _DeliveryConfirmationSectionState extends State<DeliveryConfirmationSectio
             ),
           );
 
-          // CRITICAL: Pop with result = true to signal NavigationScreen to resume
+          // Wait a bit for snackbar to show
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // CRITICAL: Only pop if tracking is active (came from NavigationScreen)
           // NavigationScreen is waiting for this result via await pushNamed()
-          debugPrint('✅ Seal confirmed, popping with result = true');
-          Navigator.of(context).pop(true);
+          if (_globalLocationManager.isGlobalTrackingActive &&
+              _globalLocationManager.currentOrderId == widget.order.id) {
+            Navigator.of(context).pop(true);
+          }
         }
       } else {
-        debugPrint('❌ Lỗi: ${viewModel.photoUploadError}');
+        // Play error sound for failed delivery confirmation
+        SoundUtils.playErrorSound();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -173,7 +177,8 @@ class _DeliveryConfirmationSectionState extends State<DeliveryConfirmationSectio
         }
       }
     } catch (e) {
-      debugPrint('❌ Exception khi xác nhận giao hàng: $e');
+      // Play error sound for exception
+      SoundUtils.playErrorSound();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -498,7 +503,7 @@ class _DeliveryConfirmationSectionState extends State<DeliveryConfirmationSectio
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Chụp hoặc chọn ảnh xác nhận',
+                        'Chụp ảnh xác nhận',
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 14,

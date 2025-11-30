@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/utils/responsive_size_utils.dart';
-import '../domain/entities/driver.dart';
+import '../domain/entities/driver.dart' as driver_entity;
+import '../domain/entities/order_detail.dart';
 import '../domain/entities/order_with_details.dart';
 import '../presentation/features/account/screens/account_screen.dart';
 import '../presentation/features/account/screens/change_password_screen.dart';
@@ -12,12 +13,14 @@ import '../presentation/features/delivery/screens/delivery_map_screen.dart';
 import '../presentation/features/delivery/screens/navigation_screen.dart';
 import '../presentation/features/home/screens/home_screen.dart';
 import '../presentation/features/main/screens/main_screen.dart';
+import '../presentation/features/orders/screens/issue_detail_screen.dart';
 import '../presentation/features/orders/screens/order_detail_screen.dart';
 import '../presentation/features/orders/screens/orders_screen.dart';
 import '../presentation/features/orders/screens/pre_delivery_documentation_screen.dart';
 import '../presentation/features/orders/screens/route_details_screen.dart';
 import '../presentation/features/orders/viewmodels/order_detail_viewmodel.dart';
 import '../presentation/features/splash/screens/splash_screen.dart';
+import '../presentation/features/notification/screens/notification_list_screen.dart';
 
 class AppRoutes {
   // Route names
@@ -38,6 +41,8 @@ class AppRoutes {
   // NOTE: driverLocation and websocketTest routes removed - testing features
   static const String routeDetails = '/route-details';
   static const String navigation = '/navigation';
+  static const String issueDetail = '/issue-detail';
+  static const String notifications = '/notifications';
 
   // Route generator
   static Route<dynamic> generateRoute(RouteSettings settings) {
@@ -83,7 +88,7 @@ class AppRoutes {
         );
 
       case editDriverInfo:
-        final Driver driver = settings.arguments as Driver;
+        final driver_entity.Driver driver = settings.arguments as driver_entity.Driver;
         return MaterialPageRoute(
           builder: (_) =>
               ResponsiveWrapper(child: EditDriverInfoScreen(driver: driver)),
@@ -141,9 +146,25 @@ class AppRoutes {
           settings: settings, // CRITICAL: Set settings to enable popUntil by route name
           builder: (_) => ResponsiveWrapper(
             child: NavigationScreen(
-              orderId: args['orderId'] as String,
+              orderId: args['orderId'] as String?,  // Allow null orderId
               isSimulationMode: args['isSimulationMode'] as bool? ?? false,
+              autoResume: args['autoResume'] as bool? ?? false, // Parse autoResume flag
             ),
+          ),
+        );
+
+      case issueDetail:
+        final VehicleIssue issue = settings.arguments as VehicleIssue;
+        return MaterialPageRoute(
+          builder: (_) => ResponsiveWrapper(
+            child: IssueDetailScreen(issue: issue),
+          ),
+        );
+
+      case notifications:
+        return MaterialPageRoute(
+          builder: (_) => ResponsiveWrapper(
+            child: const NotificationListScreen(),
           ),
         );
 

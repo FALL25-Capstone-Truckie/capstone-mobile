@@ -78,30 +78,20 @@ class AuthViewModel extends BaseViewModel {
 
   // Setter cho status với chuyển hướng
   void setStatusWithNavigation(AuthStatus newStatus) {
-    debugPrint('🔄 [AuthViewModel] setStatusWithNavigation called');
-    debugPrint('🔄 [AuthViewModel] Current status: $_status');
-    debugPrint('🔄 [AuthViewModel] New status: $newStatus');
-    debugPrint('🔄 [AuthViewModel] navigatorKey is null: ${navigatorKey == null}');
-    debugPrint('🔄 [AuthViewModel] navigatorKey.currentState is null: ${navigatorKey?.currentState == null}');
-    
     if (_status != newStatus) {
       _status = newStatus;
 
       // Nếu trạng thái thay đổi thành authenticated và có navigatorKey
       if (_status == AuthStatus.authenticated) {
-        debugPrint('✅ [AuthViewModel] Will navigate to main screen...');
         _navigateWhenReady(AppRoutes.main);
       }
       // Nếu trạng thái thay đổi thành unauthenticated và có navigatorKey
       else if (_status == AuthStatus.unauthenticated) {
-        debugPrint('✅ [AuthViewModel] Will navigate to login screen...');
         _navigateWhenReady(AppRoutes.login);
       }
 
       notifyListeners();
-    } else {
-      debugPrint('⚠️ [AuthViewModel] Status unchanged, skipping navigation');
-    }
+    } else {}
   }
 
   /// Navigate when navigator is ready (with retry mechanism)
@@ -112,21 +102,17 @@ class AuthViewModel extends BaseViewModel {
 
     while (attempts < maxAttempts) {
       if (navigatorKey?.currentState != null) {
-        debugPrint('✅ [AuthViewModel] Navigator ready, navigating to $route...');
         navigatorKey!.currentState!.pushNamedAndRemoveUntil(
           route,
           (route) => false,
         );
-        debugPrint('✅ [AuthViewModel] Navigation to $route completed');
         return;
       }
-      
+
       attempts++;
-      debugPrint('⏳ [AuthViewModel] Navigator not ready, retrying... ($attempts/$maxAttempts)');
+
       await Future.delayed(Duration(milliseconds: delayMs));
     }
-    
-    debugPrint('❌ [AuthViewModel] Failed to navigate after $maxAttempts attempts');
   }
 
   // GlobalKey để điều hướng mà không cần context
@@ -159,17 +145,16 @@ class AuthViewModel extends BaseViewModel {
         // and the new token gets revoked by the backend's token rotation.
         // Driver info will be fetched on-demand when needed.
 
-        // Connect to notification WebSocket BEFORE navigating
-        // This ensures NotificationService is ready before showing home screen
-        await _connectNotificationService();
-        
-        // Force status to loading to ensure setStatusWithNavigation will trigger navigation
-        // This handles the case where status might already be authenticated from checkAuthStatus
+        // CRITICAL FIX: Set authenticated status FIRST to trigger navigation
+        // Then connect to WebSocket AFTER MaterialApp has mounted
+        // This ensures navigatorKey.currentContext is ready when notifications arrive
         _status = AuthStatus.loading;
-        
-        // Now set authenticated status with navigation
         setStatusWithNavigation(AuthStatus.authenticated);
-        
+
+        // Wait for navigation to complete, then connect WebSocket
+        // This prevents dialog timing issues on first app launch
+        _connectNotificationService();
+
         return true;
       },
     );
@@ -182,13 +167,13 @@ class AuthViewModel extends BaseViewModel {
 
     result.fold(
       (failure) async {
-        // debugPrint('Failed to fetch driver info: ${failure.message}');
+        //
 
         // Sử dụng handleUnauthorizedError từ BaseViewModel
         final shouldRetry = await handleUnauthorizedError(failure.message);
         if (shouldRetry) {
           // Nếu refresh token thành công, thử lại
-          // debugPrint('Token refreshed, retrying to fetch driver info...');
+          //
           await _fetchDriverInfo();
         }
       },
@@ -207,21 +192,32 @@ class AuthViewModel extends BaseViewModel {
 
     return result.fold(
       (failure) async {
-        // debugPrint('Failed to refresh driver info: ${failure.message}');
+        //
 
         // Sử dụng handleUnauthorizedError từ BaseViewModel
         final shouldRetry = await handleUnauthorizedError(failure.message);
         if (shouldRetry) {
           // Nếu refresh token thành công, thử lại
-          // debugPrint('Token refreshed, retrying to get driver info...');
+          //
           return await refreshDriverInfo();
         }
 
         return false;
       },
-      (driver) {
+      (driver) async {
         _driver = driver;
         notifyListeners();
+
+        // CRITICAL FIX: Auto-reconnect notification service after driver info is fetched
+        // This handles the case where initial connection failed due to missing driver info
+        try {
+          final notificationService = getIt<NotificationService>();
+          if (!notificationService.isConnected) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            await notificationService.connect(_driver!.id);
+          }
+        } catch (e) {}
+
         return true;
       },
     );
@@ -231,6 +227,9 @@ class AuthViewModel extends BaseViewModel {
   /// Returns true if local data was cleared successfully, regardless of API result
   Future<bool> logout() async {
     try {
+      // WebSocket services will be cleaned up automatically
+      // NotificationService will be disconnected below in _clearUserData()
+
       // First clear local data
       await _clearUserData();
 
@@ -245,23 +244,23 @@ class AuthViewModel extends BaseViewModel {
             .then((result) {
               result.fold(
                 (failure) {
-                  // debugPrint('Logout API error: ${failure.message}');
+                  //
                 },
                 (_) {
-                  // debugPrint('Logout API success');
+                  //
                 },
               );
             })
             .catchError((e) {
-              // debugPrint('Error during logout API call: $e');
+              //
             });
       } catch (e) {
-        // debugPrint('Error initiating logout API call: $e');
+        //
       }
 
       return true;
     } catch (e) {
-      // debugPrint('Error during logout: $e');
+      //
       return false;
     }
   }
@@ -297,28 +296,22 @@ class AuthViewModel extends BaseViewModel {
 
   /// Force refresh token khi cần thiết
   Future<bool> forceRefreshToken() async {
-    debugPrint('🔄 [forceRefreshToken] START - Check if already refreshing...');
-    debugPrint('🔄 [forceRefreshToken] Current _isRefreshing: $_isRefreshing');
-
     // CRITICAL: If already refreshing, wait for the current refresh to complete
     if (_isRefreshing && _refreshCompleter != null) {
-      debugPrint('🔄 [forceRefreshToken] ⏳ Already refreshing - WAIT for current refresh');
       return await _refreshCompleter!.future;
     }
 
     // Đánh dấu đang refresh để tránh gọi nhiều lần
     _isRefreshing = true;
     _refreshCompleter = Completer<bool>();
-    debugPrint('🔄 [forceRefreshToken] Setting _isRefreshing = true');
     notifyListeners();
 
     final result = await _refreshTokenUseCase(NoParams());
 
     bool success = false;
-    
+
     await result.fold(
       (failure) async {
-        debugPrint('❌ [forceRefreshToken] Force refresh token failed: ${failure.message}');
         success = false;
       },
       (tokenResponse) async {
@@ -327,22 +320,13 @@ class AuthViewModel extends BaseViewModel {
           final oldToken = _user!.authToken;
           _user = tokenResponse;
 
-          debugPrint(
-            '✅ [forceRefreshToken] Token updated from ${oldToken.substring(0, 15)}... to ${tokenResponse.authToken.substring(0, 15)}...',
-          );
-
           // CRITICAL: Save tokens to TokenStorageService FIRST!
           // This ensures the new token is available for next API calls
           try {
             final tokenStorage = getIt<TokenStorageService>();
             await tokenStorage.saveAccessToken(_user!.authToken);
-            debugPrint('✅ [forceRefreshToken] Access token saved to TokenStorageService');
-            
             await tokenStorage.saveRefreshToken(_user!.refreshToken ?? '');
-            debugPrint('✅ [forceRefreshToken] Refresh token saved to TokenStorageService');
-          } catch (e) {
-            debugPrint('❌ [forceRefreshToken] Error saving tokens to storage: $e');
-          }
+          } catch (e) {}
 
           // Lưu thông tin người dùng vào SharedPreferences
           try {
@@ -363,12 +347,7 @@ class AuthViewModel extends BaseViewModel {
             );
             final userJson = json.encode(userModel.toJson());
             await prefs.setString('user_info', userJson);
-            debugPrint(
-              '✅ [forceRefreshToken] User info saved to SharedPreferences',
-            );
-          } catch (e) {
-            debugPrint('❌ [forceRefreshToken] Error saving user info: $e');
-          }
+          } catch (e) {}
         }
 
         // Tải lại thông tin tài xế
@@ -377,13 +356,11 @@ class AuthViewModel extends BaseViewModel {
         success = true;
       },
     );
-    
+
     // Reset lock and complete the completer
     _isRefreshing = false;
     _refreshCompleter?.complete(success);
     _refreshCompleter = null;
-    debugPrint('🔄 [forceRefreshToken] Completed - Result: $success');
-    
     return success;
   }
 
@@ -405,7 +382,7 @@ class AuthViewModel extends BaseViewModel {
         final userMap = json.decode(userJson);
         final userModel = UserModel.fromJson(userMap);
         _user = userModel.toEntity();
-        
+
         // CRITICAL: Load access token vào TokenStorageService ngay khi restore user
         // Điều này đảm bảo TokenStorageService có token ngay từ đầu
         await _loadTokenToStorage();
@@ -414,21 +391,19 @@ class AuthViewModel extends BaseViewModel {
         // This can cause API failures which trigger token refresh,
         // and the new token gets revoked by the backend's token rotation.
         // Driver info will be fetched on-demand when needed.
-        
+
         status = AuthStatus.authenticated;
-        
+
         // Connect to notification WebSocket (don't await to avoid blocking UI during startup)
         // This will run in background and connect when ready
-        _connectNotificationService().catchError((error) {
-          debugPrint('❌ [AuthViewModel] Error connecting notification service during startup: $error');
-        });
+        _connectNotificationService().catchError((error) {});
       } catch (e) {
-        // debugPrint('Error parsing stored user info: $e');
+        //
         status = AuthStatus.unauthenticated;
         await _clearUserData();
       }
     } catch (e) {
-      // debugPrint('Error checking auth status: $e');
+      //
       status = AuthStatus.unauthenticated;
       _errorMessage = 'Không thể lấy thông tin người dùng';
     }
@@ -440,7 +415,7 @@ class AuthViewModel extends BaseViewModel {
       await prefs.remove('user_info');
       // Tokens sẽ được xóa bởi AuthDataSource thông qua TokenStorageService
     } catch (e) {
-      // debugPrint('Error clearing user data: $e');
+      //
     }
   }
 
@@ -452,11 +427,9 @@ class AuthViewModel extends BaseViewModel {
       try {
         final tokenStorage = getIt<TokenStorageService>();
         await tokenStorage.saveAccessToken(_user!.authToken);
-        // debugPrint(
-        //   'Loaded access token to storage: ${_user!.authToken.substring(0, 15)}...',
-        // );
+        //
       } catch (e) {
-        // debugPrint('Error loading token to storage: $e');
+        //
       }
     }
   }
@@ -468,14 +441,10 @@ class AuthViewModel extends BaseViewModel {
 
   // Xử lý khi token đã được làm mới thành công từ bên ngoài
   Future<void> handleTokenRefreshed(String newAccessToken) async {
-    // debugPrint(
-    //   'handleTokenRefreshed called with token: ${newAccessToken.substring(0, 15)}...',
-    // );
+    //
 
     if (_user != null) {
-      // debugPrint(
-      //   'Updating user token from: ${_user!.authToken.substring(0, 15)}... to: ${newAccessToken.substring(0, 15)}...',
-      // );
+      //
 
       // Cập nhật token trong user
       _user = User(
@@ -511,7 +480,7 @@ class AuthViewModel extends BaseViewModel {
         );
         final userJson = json.encode(userModel.toJson());
         await prefs.setString('user_info', userJson);
-        // debugPrint('User info saved to SharedPreferences after token refresh');
+        //
 
         // Kiểm tra xem đã lưu thành công chưa
         final savedJson = prefs.getString('user_info');
@@ -519,18 +488,16 @@ class AuthViewModel extends BaseViewModel {
           final savedUserModel = UserModel.fromJson(json.decode(savedJson));
           final savedUser = savedUserModel.toEntity();
           if (savedUser.authToken != newAccessToken) {
-            // debugPrint('WARNING: Token mismatch in SharedPreferences!');
+            //
           } else {
-            // debugPrint('Token verified in SharedPreferences');
+            //
           }
         }
       } catch (e) {
-        // debugPrint('Error saving user info to SharedPreferences: $e');
+        //
       }
     } else {
-      // debugPrint(
-      //   'Cannot update token: user is null. Creating new user with token',
-      // );
+      //
 
       // Tạo user mới với token nếu user hiện tại là null
       _user = User(
@@ -566,7 +533,7 @@ class AuthViewModel extends BaseViewModel {
         );
         await prefs.setString('user_info', json.encode(userModel.toJson()));
       } catch (e) {
-        // debugPrint('Error saving temporary user: $e');
+        //
       }
     }
 
@@ -605,72 +572,48 @@ class AuthViewModel extends BaseViewModel {
     try {
       final apiClient = getIt<ApiClient>();
       apiClient.setOnUnauthorizedCallback(() async {
-        debugPrint('🔓 [401 Callback] Unauthorized error - Attempting token refresh');
-        
         // Try to refresh token first
         try {
           final success = await forceRefreshToken();
-          
+
           if (success) {
-            debugPrint('✅ [401 Callback] Token refresh successful - Request will be retried');
             // Token refreshed successfully, the request will be retried automatically
             return;
           } else {
-            debugPrint('❌ [401 Callback] Token refresh failed - Logging out user');
             await logout();
           }
         } catch (e) {
-          debugPrint('❌ [401 Callback] Error during token refresh: $e - Logging out user');
           await logout();
         }
       });
-      debugPrint('Unauthorized callback setup successfully');
-    } catch (e) {
-      debugPrint('Error setting up unauthorized callback: $e');
-    }
+    } catch (e) {}
   }
 
   /// Connect to notification WebSocket service
   Future<void> _connectNotificationService() async {
-    debugPrint('🔌 [AuthViewModel] ========================================');
-    debugPrint('🔌 [AuthViewModel] _connectNotificationService() called');
-    debugPrint('🔌 [AuthViewModel] User is null: ${_user == null}');
-    debugPrint('🔌 [AuthViewModel] Driver is null: ${_driver == null}');
-    
     if (_user == null) {
-      debugPrint('⚠️ [AuthViewModel] Cannot connect notification service - user is null');
       return;
     }
 
     // 🆕 Fetch driver info if not available
     if (_driver == null) {
-      debugPrint('📤 [AuthViewModel] Driver info not available, fetching...');
       await refreshDriverInfo();
-      
+
       if (_driver == null) {
-        debugPrint('⚠️ [AuthViewModel] Cannot connect notification service - driver info fetch failed');
         return;
       }
     }
-
-    debugPrint('🔌 [AuthViewModel] User ID: ${_user!.id}');
-    debugPrint('🔌 [AuthViewModel] User Name: ${_user!.fullName}');
-    debugPrint('🔌 [AuthViewModel] Driver ID: ${_driver!.id}');
-    debugPrint('🔌 [AuthViewModel] Driver Name: ${_driver!.userResponse.fullName}');
-
     try {
-      debugPrint('🔌 [AuthViewModel] Getting NotificationService from GetIt...');
+      // CRITICAL: Wait for MaterialApp navigation to complete
+      // This ensures navigatorKey.currentContext is ready before WebSocket connects
+      // Reduces the number of retry attempts needed for showing notification dialogs
+      await Future.delayed(const Duration(milliseconds: 500));
       final notificationService = getIt<NotificationService>();
-      debugPrint('🔌 [AuthViewModel] Got NotificationService, calling connect()...');
-      
+
       // 🆕 CRITICAL: Use driver ID instead of user ID and AWAIT connection
       await notificationService.connect(_driver!.id);
-      debugPrint('✅ [AuthViewModel] Connected to notification service for driver: ${_driver!.id}');
-    } catch (e) {
-      debugPrint('❌ [AuthViewModel] Error connecting to notification service: $e');
-      debugPrint('❌ [AuthViewModel] Stack trace: ${StackTrace.current}');
-    }
-    
-    debugPrint('🔌 [AuthViewModel] ========================================');
+      // NotificationService now handles ALL notifications including return goods
+      // No need for separate WebSocketService
+    } catch (e) {}
   }
 }

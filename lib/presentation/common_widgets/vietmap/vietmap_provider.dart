@@ -36,17 +36,17 @@ class VietMapProvider extends StatelessWidget {
             tokenStorageService: getIt<TokenStorageService>(),
           ),
         ),
-        ProxyProvider<ApiService, VietMapService>(
-          update: (_, apiService, __) => VietMapService(apiService: apiService),
-        ),
-        ChangeNotifierProxyProvider<VietMapService, VietMapViewModel>(
-          create: (context) => VietMapViewModel(
-            vietMapService: Provider.of<VietMapService>(context, listen: false),
-          ),
-          update: (_, vietMapService, previousViewModel) =>
-              previousViewModel ??
-              VietMapViewModel(vietMapService: vietMapService),
-        ),
+        // ProxyProvider<ApiService, VietMapService>(
+        //   update: (_, apiService, __) => VietMapService(apiClient: apiService),
+        // ),
+        // ChangeNotifierProxyProvider<VietMapService, VietMapViewModel>(
+        //   create: (context) => VietMapViewModel(
+        //     vietMapService: Provider.of<VietMapService>(context, listen: false),
+        //   ),
+        //   update: (_, vietMapService, previousViewModel) =>
+        //       previousViewModel ??
+        //       VietMapViewModel(vietMapService: vietMapService),
+        // ),
       ],
       child: child,
     );

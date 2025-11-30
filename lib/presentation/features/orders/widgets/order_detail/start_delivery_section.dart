@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../../app/app_routes.dart';
 import '../../../../../core/services/ocr_service.dart';
+import '../../../../../core/utils/sound_utils.dart';
 import '../../../../utils/driver_role_checker.dart';
 import '../../../../../domain/entities/order_with_details.dart';
 import '../../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
@@ -131,7 +132,7 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         }
       }
     } catch (e) {
-      debugPrint('Lỗi OCR: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -201,6 +202,9 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       );
 
       if (success) {
+        // Play success sound for starting delivery
+        SoundUtils.playSuccessSound();
+        
         // Lưu lại context và orderId để sử dụng sau khi tải lại order
         final navigatorContext = context;
         final orderId = widget.order.id;
@@ -214,7 +218,9 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
           );
         }
       } else {
-        debugPrint('❌ Lỗi: ${viewModel.startDeliveryErrorMessage}');
+        // Play error sound for failed delivery start
+        SoundUtils.playErrorSound();
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -225,7 +231,9 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Exception khi bắt đầu chuyến xe: $e');
+      // Play error sound for exception
+      SoundUtils.playErrorSound();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -266,7 +274,6 @@ class _StartDeliverySectionState extends State<StartDeliverySection> {
       return _buildButton();
     }
   }
-
 
   Widget _buildImagePreview() {
     if (_odometerImage == null) {

@@ -10,10 +10,23 @@ abstract class BaseViewModel extends ChangeNotifier {
   bool _isRetrying = false;
 
   /// Ghi đè phương thức notifyListeners để tránh lỗi khi ViewModel đã bị dispose
+  /// CRITICAL: Wrap in try-catch to handle rare race condition where dispose() 
+  /// is called between the check and super.notifyListeners()
   @override
   void notifyListeners() {
-    if (!_isDisposed) {
+    if (_isDisposed) return;
+    
+    try {
       super.notifyListeners();
+    } catch (e) {
+      // Handle case where disposal happened during notifyListeners()
+      // This is a rare race condition but can occur under heavy load
+      if (!e.toString().contains('disposed')) {
+        // Re-throw if it's not a disposal error
+        
+        rethrow;
+      }
+      // Silently ignore disposal errors as they're expected
     }
   }
 
@@ -30,9 +43,7 @@ abstract class BaseViewModel extends ChangeNotifier {
         errorMessage.contains('token')) {
       if (!_isRetrying) {
         _isRetrying = true;
-        debugPrint(
-          'Handling unauthorized error in ${runtimeType.toString()}: $errorMessage',
-        );
+        
 
         try {
           final authViewModel = getIt<AuthViewModel>();
@@ -40,21 +51,19 @@ abstract class BaseViewModel extends ChangeNotifier {
 
           _isRetrying = false;
           if (refreshed) {
-            debugPrint(
-              'Token refreshed successfully in ${runtimeType.toString()}',
-            );
+            
             return true; // Thành công, có thể thử lại request
           } else {
-            debugPrint('Token refresh failed in ${runtimeType.toString()}');
+            
             return false; // Thất bại, không thể thử lại
           }
         } catch (e) {
           _isRetrying = false;
-          debugPrint('Error refreshing token in ${runtimeType.toString()}: $e');
+          
           return false;
         }
       } else {
-        debugPrint('Already retrying in ${runtimeType.toString()}');
+        
         return false;
       }
     }

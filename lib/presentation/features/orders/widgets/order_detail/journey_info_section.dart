@@ -197,7 +197,7 @@ class JourneyInfoSection extends StatelessWidget {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  '${segment.distanceMeters} km',
+                  '${segment.distanceKilometers} km',
                   style: AppTextStyles.bodySmall.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -206,21 +206,7 @@ class JourneyInfoSection extends StatelessWidget {
             ),
           ),
 
-          // Status badge
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: _getSegmentStatusColor(segment.status).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(6.r),
-            ),
-            child: Text(
-              _getSegmentStatusLabel(segment.status),
-              style: AppTextStyles.bodySmall.copyWith(
-                color: _getSegmentStatusColor(segment.status),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          // Remove status badge display as per user request
         ],
       ),
     );
@@ -281,10 +267,10 @@ class JourneyInfoSection extends StatelessWidget {
   /// Dịch tên điểm từ tiếng Anh sang tiếng Việt
   String _translatePointName(String pointName) {
     final translations = {
-      'Carrier': 'Kho hàng',
+      'Carrier': 'Đơn vị vận chuyển',
       'Pickup': 'Lấy hàng',
       'Delivery': 'Giao hàng',
-      'carrier': 'Kho hàng',
+      'carrier': 'Đơn vị vận chuyển',
       'pickup': 'Lấy hàng',
       'delivery': 'Giao hàng',
     };

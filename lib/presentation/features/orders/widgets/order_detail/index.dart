@@ -1,4 +1,5 @@
 export 'address_section.dart';
+export 'combined_issue_report_with_location.dart';
 export 'damage_report_section.dart';
 export 'damage_report_with_location.dart';
 export 'driver_info.dart';
@@ -7,6 +8,7 @@ export 'journey_time_section.dart';
 export 'journey_info_section.dart';
 export 'order_details_section.dart';
 export 'order_info_section.dart';
+export 'order_rejection_with_location.dart';
 export 'package_section.dart';
 export 'pre_delivery_documentation_section.dart';
 export 'receiver_section.dart';

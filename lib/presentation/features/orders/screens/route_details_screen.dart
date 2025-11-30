@@ -380,36 +380,45 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
       return const SizedBox.shrink();
     }
 
-    final orderDetail = widget.viewModel.orderWithDetails!.orderDetails.first;
-    final vehicleAssignmentId = orderDetail.vehicleAssignmentId;
-    final vehicleAssignment = widget.viewModel.orderWithDetails!.vehicleAssignments
-        .cast<VehicleAssignment?>()
-        .firstWhere(
-          (va) => va?.id == vehicleAssignmentId,
-          orElse: () => null,
-        );
-    
-    if (vehicleAssignment?.journeyHistories.isEmpty ?? true) {
+    final vehicleAssignment = widget.viewModel.getCurrentUserVehicleAssignment();
+    if (vehicleAssignment == null) {
       return const SizedBox.shrink();
     }
     
-    final journeySegments = vehicleAssignment!.journeyHistories.first.journeySegments;
+    if (vehicleAssignment.journeyHistories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    // Chỉ dùng ACTIVE journey history mới nhất
+    final activeJourney = vehicleAssignment.journeyHistories
+        .where((j) => j.status == 'ACTIVE')
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    
+    if (activeJourney.isEmpty) {
+      return const Center(
+        child: Text('Không có lộ trình đang hoạt động'),
+      );
+    }
+    
+    final latestJourney = activeJourney.first;
+    final journeySegments = latestJourney.journeySegments;
 
     // Get current segment
     final currentSegment = journeySegments[_selectedSegmentIndex];
 
     // Format distance in km
-    final distanceKm = (currentSegment.distanceMeters).toStringAsFixed(2);
+    final distanceKm = (currentSegment.distanceKilometers).toStringAsFixed(2);
 
     // Chuyển đổi tên điểm đầu/cuối sang tiếng Việt
     String startPointName = currentSegment.startPointName;
     String endPointName = currentSegment.endPointName;
 
-    if (startPointName == "Carrier") startPointName = "Kho";
+    if (startPointName == "Carrier") startPointName = "Đơn vị vận chuyển";
     if (startPointName == "Pickup") startPointName = "Lấy hàng";
     if (startPointName == "Delivery") startPointName = "Giao hàng";
 
-    if (endPointName == "Carrier") endPointName = "Kho";
+    if (endPointName == "Carrier") endPointName = "Đơn vị vận chuyển";
     if (endPointName == "Pickup") endPointName = "Lấy hàng";
     if (endPointName == "Delivery") endPointName = "Giao hàng";
 
@@ -506,28 +515,26 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
       return false;
     }
     
-    final vehicleAssignment = _getVehicleAssignmentForFirstOrderDetail();
+    final vehicleAssignment = widget.viewModel.getCurrentUserVehicleAssignment();
     if (vehicleAssignment == null || vehicleAssignment.journeyHistories.isEmpty) {
       return false;
     }
     
-    return vehicleAssignment.journeyHistories.first.journeySegments.isNotEmpty;
+    // Chỉ kiểm tra ACTIVE journey history
+    final activeJourney = vehicleAssignment.journeyHistories
+        .where((j) => j.status == 'ACTIVE')
+        .toList();
+    
+    if (activeJourney.isEmpty) {
+      return false;
+    }
+    
+    return activeJourney.first.journeySegments.isNotEmpty;
   }
 
-  VehicleAssignment? _getVehicleAssignmentForFirstOrderDetail() {
-    if (widget.viewModel.orderWithDetails?.orderDetails.isEmpty ?? true) {
-      return null;
-    }
-    final vehicleAssignmentId = widget.viewModel.orderWithDetails!.orderDetails.first.vehicleAssignmentId;
-    if (vehicleAssignmentId == null) {
-      return null;
-    }
-    return widget.viewModel.orderWithDetails!.vehicleAssignments
-        .cast<VehicleAssignment?>()
-        .firstWhere(
-          (va) => va?.id == vehicleAssignmentId,
-          orElse: () => null,
-        );
+  String? _getVehicleAssignmentId() {
+    final vehicleAssignment = widget.viewModel.getCurrentUserVehicleAssignment();
+    return vehicleAssignment?.id;
   }
 
   String _getMapStyleString() {
@@ -672,7 +679,7 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
         } else if (i == widget.viewModel.routeSegments.length - 1) {
           endMarkerColor = Colors.orange; // Back to Carrier
           endMarkerIcon = Icons.warehouse;
-          endMarkerLabel = 'Kho';
+          endMarkerLabel = 'Đơn vị vận chuyển';
         } else {
           endMarkerColor = Colors.red; // Delivery
           endMarkerIcon = Icons.local_shipping;
@@ -717,6 +724,133 @@ class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
             latLng: endPoint,
           ),
         );
+      }
+
+      // Thêm issue markers
+      final currentUserVehicleAssignment = widget.viewModel.getCurrentUserVehicleAssignment();
+      if (currentUserVehicleAssignment != null && currentUserVehicleAssignment.issues.isNotEmpty) {
+        for (var issue in currentUserVehicleAssignment.issues) {
+          if (issue.locationLatitude != null && issue.locationLongitude != null) {
+            final issueLatLng = LatLng(issue.locationLatitude!, issue.locationLongitude!);
+            
+            // Format reported time
+            String timeText = '';
+            if (issue.reportedAt != null) {
+              try {
+                timeText = '${issue.reportedAt!.day.toString().padLeft(2, '0')}/${issue.reportedAt!.month.toString().padLeft(2, '0')} ${issue.reportedAt!.hour.toString().padLeft(2, '0')}:${issue.reportedAt!.minute.toString().padLeft(2, '0')}';
+              } catch (e) {
+                timeText = '';
+              }
+            }
+            
+            // Get icon and color based on issue category
+            IconData issueIcon = Icons.warning_amber_rounded;
+            Color issueColor = Colors.red;
+            
+            switch (issue.issueCategory) {
+              case 'ORDER_REJECTION':
+                issueIcon = Icons.inventory_2;
+                issueColor = Colors.red;
+                break;
+              case 'SEAL_REPLACEMENT':
+                issueIcon = Icons.lock;
+                issueColor = Colors.orange;
+                break;
+              case 'DAMAGE':
+              case 'CARGO_ISSUE':
+              case 'MISSING_ITEMS':
+              case 'WRONG_ITEMS':
+                issueIcon = Icons.warning_amber_rounded;
+                issueColor = Colors.orange;
+                break;
+              case 'PENALTY':
+                issueIcon = Icons.local_police;
+                issueColor = Colors.red[700]!;
+                break;
+              case 'ACCIDENT':
+              case 'VEHICLE_BREAKDOWN':
+                issueIcon = Icons.build;
+                issueColor = Colors.red;
+                break;
+              case 'WEATHER':
+                issueIcon = Icons.cloud;
+                issueColor = Colors.blue;
+                break;
+              case 'GENERAL':
+              default:
+                issueIcon = Icons.warning_amber_rounded;
+                issueColor = Colors.orange;
+                break;
+            }
+            
+            _waypointMarkers.add(
+              Marker(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: issueColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: issueColor.withOpacity(0.5),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(
+                        issueIcon,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    Container(
+                      constraints: BoxConstraints(maxWidth: 140),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: issueColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Issue type name
+                          Text(
+                            issue.issueTypeName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          // Reported time
+                          if (timeText.isNotEmpty) ...[
+                            SizedBox(height: 2),
+                            Text(
+                              timeText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                latLng: issueLatLng,
+              ),
+            );
+          }
+        }
       }
 
       // Rebuild UI to render markers

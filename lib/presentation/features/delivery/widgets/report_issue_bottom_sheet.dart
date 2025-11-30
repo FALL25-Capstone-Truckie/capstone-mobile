@@ -9,18 +9,23 @@ import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
 import 'report_seal_replacement_bottom_sheet.dart';
 import 'damage_report_bottom_sheet.dart';
+import 'penalty_report_bottom_sheet.dart';
+import 'report_reroute_bottom_sheet.dart';
+import '../viewmodels/navigation_viewmodel.dart';
 
 /// Bottom sheet widget để driver báo cáo issue
 class ReportIssueBottomSheet extends StatefulWidget {
   final String vehicleAssignmentId;
   final LatLng? currentLocation;
   final OrderWithDetails? orderWithDetails;
+  final NavigationViewModel? navigationViewModel;
 
   const ReportIssueBottomSheet({
     super.key,
     required this.vehicleAssignmentId,
     this.currentLocation,
     this.orderWithDetails,
+    this.navigationViewModel,
   });
 
   @override
@@ -57,9 +62,9 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
     try {
       final types = await _issueRepository.getActiveIssueTypes();
       
-      // debugPrint('📋 Loaded ${types.length} issue types:');
+      // 
       // for (var type in types) {
-      //   debugPrint('   - ${type.issueTypeName}: ${type.issueCategory.value}');
+      //   
       // }
       
       setState(() {
@@ -67,7 +72,6 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
         _isLoadingTypes = false;
       });
     } catch (e) {
-      debugPrint('❌ Error loading issue types: $e');
       setState(() {
         _isLoadingTypes = false;
       });
@@ -90,15 +94,8 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
       (type) => type.id == issueTypeId,
       orElse: () => _issueTypes.first,
     );
-
-    debugPrint('📋 Selected issue type: ${selectedType.issueTypeName}');
-    debugPrint('📋 Category: ${selectedType.issueCategory}');
-    debugPrint('📋 Category value: ${selectedType.issueCategory.value}');
-
     // Check if it's SEAL_REPLACEMENT category
     if (selectedType.issueCategory == IssueCategory.sealReplacement) {
-      debugPrint('🔓 SEAL_REPLACEMENT category detected, showing seal replacement form');
-      
       // Close current bottom sheet
       Navigator.pop(context);
       
@@ -116,11 +113,8 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
 
       // If issue was created successfully, refresh data
       if (result != null && mounted) {
-        debugPrint('✅ Seal issue created, refreshing data...');
       }
     } else if (selectedType.issueCategory == IssueCategory.damage) {
-      debugPrint('📦 DAMAGE category detected, showing damage report form');
-      
       // Check if we have order details
       if (widget.orderWithDetails == null || widget.orderWithDetails!.orderDetails.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -146,10 +140,6 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
       }).toList();
       
       // Show damage report bottom sheet
-      debugPrint('📍 [ReportIssueBottomSheet] Opening damage report with location:');
-      debugPrint('   - Latitude: ${widget.currentLocation?.latitude}');
-      debugPrint('   - Longitude: ${widget.currentLocation?.longitude}');
-      
       final result = await showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -163,12 +153,65 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
         ),
       );
 
+      // If damage report was created successfully, close report issue sheet and notify parent
+      if (result == true && mounted) {
+        Navigator.pop(context, true); // Close report issue bottom sheet and return success
+      }
+    } else if (selectedType.issueCategory == IssueCategory.penalty) {
+      // Close current bottom sheet
+      Navigator.pop(context);
+      
+      // Show penalty report bottom sheet
+      final result = await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => PenaltyReportBottomSheet(
+          vehicleAssignmentId: widget.vehicleAssignmentId,
+          issueTypeId: issueTypeId,
+          currentLatitude: widget.currentLocation?.latitude,
+          currentLongitude: widget.currentLocation?.longitude,
+        ),
+      );
+
       // If issue was created successfully, refresh data
       if (result != null && mounted) {
-        debugPrint('✅ Damage report created, refreshing data...');
+      }
+    } else if (selectedType.issueCategory == IssueCategory.reroute) {
+      // Check if we have order details and navigation view model for segment selection
+      if (widget.orderWithDetails == null || widget.navigationViewModel == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không tìm thấy thông tin điều hướng'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Close current bottom sheet
+      Navigator.pop(context);
+      
+      // Show reroute bottom sheet
+      final result = await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => ReportRerouteBottomSheet(
+          vehicleAssignmentId: widget.vehicleAssignmentId,
+          issueTypeId: selectedType.id,
+          currentLocation: widget.currentLocation,
+          orderWithDetails: widget.orderWithDetails!,
+          navigationViewModel: widget.navigationViewModel!,
+        ),
+      );
+
+      // If result is true (reroute reported successfully), return success
+      if (result == true) {
+        // Parent will handle refreshing data
       }
     } else {
-      // For other categories, just update selected ID
+      // For other categories, just update selected ID  
       setState(() {
         _selectedIssueTypeId = issueTypeId;
       });
@@ -265,22 +308,13 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
     });
 
     try {
-      debugPrint('📤 Submitting issue...');
-      debugPrint('   - Description: ${_descriptionController.text}');
-      debugPrint('   - Issue Type ID: $_selectedIssueTypeId');
-      debugPrint('   - Vehicle Assignment ID: ${widget.vehicleAssignmentId}');
-      debugPrint('   - Location: ${widget.currentLocation?.latitude}, ${widget.currentLocation?.longitude}');
-
-      final issue = await _issueRepository.createIssue(
+      await _issueRepository.createIssue(
         description: _descriptionController.text.trim(),
         issueTypeId: _selectedIssueTypeId!,
         vehicleAssignmentId: widget.vehicleAssignmentId,
         locationLatitude: widget.currentLocation?.latitude,
         locationLongitude: widget.currentLocation?.longitude,
       );
-
-      debugPrint('✅ Issue created successfully: ${issue.id}');
-
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -292,7 +326,6 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
         );
       }
     } catch (e) {
-      debugPrint('❌ Error submitting issue: $e');
       setState(() {
         _isSubmitting = false;
       });
@@ -336,7 +369,7 @@ class _ReportIssueBottomSheetState extends State<ReportIssueBottomSheet> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(

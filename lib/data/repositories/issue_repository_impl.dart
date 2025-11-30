@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../../domain/entities/issue.dart';
 import '../../domain/repositories/issue_repository.dart';
 import '../datasources/api_client.dart';
+import '../../core/errors/error_mapper.dart';
 
 /// Concrete implementation of IssueRepository
 class IssueRepositoryImpl implements IssueRepository {
@@ -19,12 +21,6 @@ class IssueRepositoryImpl implements IssueRepository {
     double? locationLongitude,
   }) async {
     try {
-      debugPrint('📤 Creating issue via API...');
-      debugPrint('   - Description: $description');
-      debugPrint('   - Issue Type ID: $issueTypeId');
-      debugPrint('   - Vehicle Assignment ID: $vehicleAssignmentId');
-      debugPrint('   - Location: $locationLatitude, $locationLongitude');
-
       final response = await _apiClient.post(
         '/issue',
         data: {
@@ -35,13 +31,11 @@ class IssueRepositoryImpl implements IssueRepository {
           if (locationLongitude != null) 'locationLongitude': locationLongitude,
         },
       );
-
-      debugPrint('✅ Issue created successfully');
       return Issue.fromJson(response.data['data'] as Map<String, dynamic>);
     } catch (e, stackTrace) {
-      debugPrint('❌ Error creating issue: $e');
-      debugPrint('Stack trace: $stackTrace');
-      throw Exception('Không thể tạo sự cố: $e');
+      // Use ErrorMapper for user-friendly message
+      final friendlyMessage = ErrorMapper.mapToUserFriendlyMessage(e);
+      throw Exception('Không thể tạo sự cố: $friendlyMessage');
     }
   }
 
@@ -56,43 +50,31 @@ class IssueRepositoryImpl implements IssueRepository {
       // Basic UUID format validation validation (UUID v4 format)
       final uuidPattern = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
       if (!uuidPattern.hasMatch(id.toLowerCase())) {
-        debugPrint('⚠️ Warning: ID "$id" may not be a valid UUID format');
       }
-      
-      debugPrint('📤 Fetching issue by ID: $id');
-
       final response = await _apiClient.get('/issues/$id');
-
-      debugPrint('✅ Issue fetched successfully');
       return Issue.fromJson(response.data['data'] as Map<String, dynamic>);
     } catch (e, stackTrace) {
-      debugPrint('❌ Error fetching issue: $e');
-      debugPrint('Stack trace: $stackTrace');
-      throw Exception('Không thể tải thông tin sự cố: $e');
+      // Use ErrorMapper for user-friendly message
+      final friendlyMessage = ErrorMapper.mapToUserFriendlyMessage(e);
+      throw Exception('Không thể tải thông tin sự cố: $friendlyMessage');
     }
   }
 
   @override
   Future<List<IssueType>> getAllIssueTypes() async {
     try {
-      debugPrint('📤 Fetching all issue types...');
-      debugPrint('📤 Calling API endpoint: /issue-types');
-
       final response = await _apiClient.get('/issue-types');
-      debugPrint('✅ Response status: ${response.statusCode}');
-      debugPrint('✅ Response data keys: ${response.data.keys.toList()}');
+      
 
       final data = response.data['data'] as List<dynamic>;
       final issueTypes = data
           .map((json) => IssueType.fromJson(json as Map<String, dynamic>))
           .toList();
-
-      debugPrint('✅ Fetched ${issueTypes.length} issue types');
       return issueTypes;
     } catch (e, stackTrace) {
-      debugPrint('❌ Error fetching issue types: $e');
-      debugPrint('Stack trace: $stackTrace');
-      throw Exception('Không thể tải danh sách loại sự cố: $e');
+      // Use ErrorMapper for user-friendly message
+      final friendlyMessage = ErrorMapper.mapToUserFriendlyMessage(e);
+      throw Exception('Không thể tải danh sách loại sự cố: $friendlyMessage');
     }
   }
 
@@ -102,7 +84,6 @@ class IssueRepositoryImpl implements IssueRepository {
       final types = await getAllIssueTypes();
       return types.where((type) => type.isActive).toList();
     } catch (e) {
-      debugPrint('Error getting active issue types: $e');
       rethrow;
     }
   }
@@ -118,8 +99,6 @@ class IssueRepositoryImpl implements IssueRepository {
     double? locationLongitude,
   }) async {
     try {
-      debugPrint('📤 Uploading seal removal image: $sealRemovalImage');
-      
       // Create multipart form data
       final formData = FormData.fromMap({
         'vehicleAssignmentId': vehicleAssignmentId,
@@ -140,13 +119,11 @@ class IssueRepositoryImpl implements IssueRepository {
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
-        debugPrint('✅ Seal removal issue reported successfully');
         return Issue.fromJson(response.data['data']);
       } else {
         throw Exception('Failed to report seal issue');
       }
     } catch (e) {
-      debugPrint('❌ Error reporting seal issue: $e');
       rethrow;
     }
   }
@@ -171,7 +148,6 @@ class IssueRepositoryImpl implements IssueRepository {
         throw Exception('Failed to confirm new seal');
       }
     } catch (e) {
-      debugPrint('Error confirming new seal: $e');
       rethrow;
     }
   }
@@ -191,20 +167,16 @@ class IssueRepositoryImpl implements IssueRepository {
   @override
   Future<dynamic> getInUseSeal(String vehicleAssignmentId) async {
     try {
-      debugPrint('📤 Getting IN_USE seal for vehicle assignment: $vehicleAssignmentId');
       final response = await _apiClient.get(
         '/issues/vehicle-assignment/$vehicleAssignmentId/in-use-seal',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
-        debugPrint('✅ Got IN_USE seal: ${response.data['data']}');
         return response.data['data'];
       } else {
-        debugPrint('⚠️ No IN_USE seal found');
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Error getting IN_USE seal: $e');
       rethrow;
     }
   }
@@ -212,7 +184,6 @@ class IssueRepositoryImpl implements IssueRepository {
   @override
   Future<List<Issue>> getPendingSealReplacements(String vehicleAssignmentId) async {
     try {
-      debugPrint('📤 Getting pending seal replacements for vehicle assignment: $vehicleAssignmentId');
       final response = await _apiClient.get(
         '/issues/vehicle-assignment/$vehicleAssignmentId/pending-seal-replacements',
       );
@@ -220,14 +191,12 @@ class IssueRepositoryImpl implements IssueRepository {
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> issuesJson = response.data['data'];
         final issues = issuesJson.map((json) => Issue.fromJson(json)).toList();
-        debugPrint('✅ Got ${issues.length} pending seal replacement(s)');
+        
         return issues;
       } else {
-        debugPrint('⚠️ No pending seal replacements found');
         return [];
       }
     } catch (e) {
-      debugPrint('❌ Error getting pending seal replacements: $e');
       // Return empty list instead of throwing to avoid breaking UI
       return [];
     }
@@ -244,13 +213,6 @@ class IssueRepositoryImpl implements IssueRepository {
     double? locationLongitude,
   }) async {
     try {
-      debugPrint('📦 Reporting damaged goods issue...');
-      debugPrint('   - Vehicle Assignment ID: $vehicleAssignmentId');
-      debugPrint('   - Issue Type ID: $issueTypeId');
-      debugPrint('   - Order Detail ID: $orderDetailId');
-      debugPrint('   - Description: $description');
-      debugPrint('   - Damage images count: ${damageImagePaths.length}');
-
       // Create multipart form data
       final formData = FormData();
       formData.fields.add(MapEntry('vehicleAssignmentId', vehicleAssignmentId));
@@ -268,7 +230,6 @@ class IssueRepositoryImpl implements IssueRepository {
       // Add multiple image files
       for (int i = 0; i < damageImagePaths.length; i++) {
         final imagePath = damageImagePaths[i];
-        debugPrint('📤 Adding damage image ${i + 1}: $imagePath');
         formData.files.add(
           MapEntry(
             'damageImages',
@@ -286,14 +247,214 @@ class IssueRepositoryImpl implements IssueRepository {
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
-        debugPrint('✅ Damage issue reported successfully');
         return Issue.fromJson(response.data['data']);
       } else {
         throw Exception('Failed to report damage issue');
       }
     } catch (e) {
-      debugPrint('❌ Error reporting damage issue: $e');
       rethrow;
+    }
+  }
+
+  @override
+  Future<void> reportPenaltyIssue({
+    required String vehicleAssignmentId,
+    required String issueTypeId,
+    required String violationType,
+    required String violationImagePath,
+    double? locationLatitude,
+    double? locationLongitude,
+  }) async {
+    try {
+      // Create multipart form data
+      final formData = FormData();
+      formData.fields.add(MapEntry('vehicleAssignmentId', vehicleAssignmentId));
+      formData.fields.add(MapEntry('issueTypeId', issueTypeId));
+      formData.fields.add(MapEntry('violationType', violationType));
+      
+      if (locationLatitude != null) {
+        formData.fields.add(MapEntry('locationLatitude', locationLatitude.toString()));
+      }
+      if (locationLongitude != null) {
+        formData.fields.add(MapEntry('locationLongitude', locationLongitude.toString()));
+      }
+
+      // Add violation record image file
+      formData.files.add(
+        MapEntry(
+          'trafficViolationRecordImage',
+          await MultipartFile.fromFile(
+            violationImagePath,
+            filename: violationImagePath.split('/').last,
+          ),
+        ),
+      );
+
+      final response = await _apiClient.post(
+        '/issues/penalty',
+        data: formData,
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+      } else {
+        throw Exception('Failed to report penalty issue');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ===== ORDER_REJECTION flow methods =====
+
+  @override
+  Future<Issue> reportOrderRejection({
+    required String vehicleAssignmentId,
+    required List<String> orderDetailIds,
+    double? locationLatitude,
+    double? locationLongitude,
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        '/issues/order-rejection',
+        data: {
+          'vehicleAssignmentId': vehicleAssignmentId,
+          'orderDetailIds': orderDetailIds,
+          if (locationLatitude != null) 'locationLatitude': locationLatitude,
+          if (locationLongitude != null) 'locationLongitude': locationLongitude,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        
+        return Issue.fromJson(response.data['data']);
+      } else {
+        throw Exception('Failed to report order rejection');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<dynamic> getOrderRejectionDetail(String issueId) async {
+    try {
+      final response = await _apiClient.get(
+        '/issues/order-rejection/$issueId/detail',
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return response.data['data'];
+      } else {
+        throw Exception('Failed to get order rejection detail');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Issue> confirmReturnDelivery({
+    required String issueId,
+    required List<dynamic> returnDeliveryImages,
+  }) async {
+    try {
+      
+
+      // Prepare FormData to send files directly (like PhotoCompletion)
+      final formData = FormData();
+      
+      // Add issueId as a part
+      formData.fields.add(MapEntry('issueId', issueId));
+      
+      // Add files
+      for (var image in returnDeliveryImages) {
+        if (image is File) {
+          formData.files.add(
+            MapEntry(
+              'files',
+              await MultipartFile.fromFile(
+                image.path,
+                filename: image.path.split('/').last,
+              ),
+            ),
+          );
+        }
+      }
+      // Send directly to backend, backend will upload to Cloudinary
+      final response = await _apiClient.post(
+        '/issues/order-rejection/confirm-return',
+        data: formData,
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return Issue.fromJson(response.data['data']);
+      } else {
+        throw Exception('Failed to confirm return delivery');
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Issue> reportRerouteIssue({
+    required String vehicleAssignmentId,
+    required String issueTypeId,
+    required String affectedSegmentId,
+    required String description,
+    double? locationLatitude,
+    double? locationLongitude,
+    List<dynamic>? images,
+  }) async {
+    try {
+      // Prepare FormData for multipart/form-data request
+      final formData = FormData();
+
+      // Add required fields
+      formData.fields.add(MapEntry('vehicleAssignmentId', vehicleAssignmentId));
+      formData.fields.add(MapEntry('issueTypeId', issueTypeId));
+      formData.fields.add(MapEntry('affectedSegmentId', affectedSegmentId));
+      formData.fields.add(MapEntry('description', description));
+
+      // Add optional location
+      if (locationLatitude != null) {
+        formData.fields.add(MapEntry('locationLatitude', locationLatitude.toString()));
+      }
+      if (locationLongitude != null) {
+        formData.fields.add(MapEntry('locationLongitude', locationLongitude.toString()));
+      }
+
+      // Add optional images
+      if (images != null && images.isNotEmpty) {
+        for (var image in images) {
+          if (image is File) {
+            formData.files.add(
+              MapEntry(
+                'images',
+                await MultipartFile.fromFile(
+                  image.path,
+                  filename: image.path.split('/').last,
+                ),
+              ),
+            );
+          }
+        }
+      }
+
+      // Send request to backend
+      final response = await _apiClient.post(
+        '/issues/reroute',
+        data: formData,
+      );
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return Issue.fromJson(response.data['data']);
+      } else {
+        throw Exception('Failed to report reroute issue');
+      }
+    } catch (e) {
+      final friendlyMessage = ErrorMapper.mapToUserFriendlyMessage(e);
+      throw Exception('Không thể báo cáo tái định tuyến: $friendlyMessage');
     }
   }
 }

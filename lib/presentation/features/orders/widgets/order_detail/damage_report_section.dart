@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../../app/di/service_locator.dart';
 import '../../../../../domain/entities/issue.dart';
+import '../../../../../domain/entities/order_detail.dart';
 import '../../../../../domain/entities/order_with_details.dart';
 import '../../../../../domain/repositories/issue_repository.dart';
 import '../../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
@@ -70,10 +71,7 @@ class _DamageReportSectionState extends State<DamageReportSection> {
           _selectedIssueType = damageTypes.first;
         }
       });
-      
-      debugPrint('✅ Loaded ${damageTypes.length} DAMAGE issue types');
     } catch (e) {
-      debugPrint('❌ Error loading damage issue types: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -158,19 +156,41 @@ class _DamageReportSectionState extends State<DamageReportSection> {
     });
   }
 
+  /// Get vehicle assignment of current driver
+  VehicleAssignment? _getCurrentUserVehicleAssignment(BuildContext context) {
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    final currentUserPhone = authViewModel.driver?.userResponse?.phoneNumber;
+    
+    if (currentUserPhone == null || currentUserPhone.isEmpty) {
+      return null;
+    }
+    
+    try {
+      return widget.order.vehicleAssignments.firstWhere(
+        (va) {
+          if (va.primaryDriver == null) return false;
+          return currentUserPhone.trim() == va.primaryDriver!.phoneNumber.trim();
+        },
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
   void _showDamageReportBottomSheet() {
-    // Get vehicle assignment ID from order
-    if (widget.order.vehicleAssignments.isEmpty) {
+    // CRITICAL FIX: Get vehicle assignment of CURRENT DRIVER
+    // Bug: vehicleAssignments.first might belong to another driver in multi-trip orders
+    final vehicleAssignment = _getCurrentUserVehicleAssignment(context);
+    
+    if (vehicleAssignment == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không tìm thấy thông tin phương tiện'),
+          content: Text('❌ Không tìm thấy chuyến xe của bạn'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
-
-    final vehicleAssignment = widget.order.vehicleAssignments.first;
 
     // Get damage issue type
     _issueRepository.getActiveIssueTypes().then((types) {
@@ -203,12 +223,12 @@ class _DamageReportSectionState extends State<DamageReportSection> {
         ),
       ).then((result) {
         if (result == true && mounted) {
-          // Refresh order details after damage report
-          widget.onReported();
+          // Pop back to navigation screen so driver can continue trip and resume simulator
+          // Pass true to indicate issue was reported successfully
+          Navigator.of(context).pop(true);
         }
       });
     }).catchError((e) {
-      debugPrint('❌ Error loading issue types: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi: $e'),
@@ -262,15 +282,23 @@ class _DamageReportSectionState extends State<DamageReportSection> {
     setState(() {
       _isLoading = true;
     });
-
-    debugPrint('📦 Bắt đầu báo cáo hàng hư hại với ${_damageImages.length} ảnh...');
-
     try {
       // Use location passed from parent widget (consistent with seal report approach)
-      debugPrint('📍 Using location: ${widget.currentLatitude}, ${widget.currentLongitude}');
-
-      // Get vehicle assignment ID from order
-      final vehicleAssignment = widget.order.vehicleAssignments.first;
+      // CRITICAL FIX: Get vehicle assignment ID from CURRENT DRIVER
+      // Bug: vehicleAssignments.first might belong to another driver in multi-trip orders
+      final vehicleAssignment = _getCurrentUserVehicleAssignment(context);
+      if (vehicleAssignment == null) {
+        if (context.mounted) {
+          Navigator.pop(context); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Không tìm thấy chuyến xe của bạn'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
 
       // Report damage issue
       await _issueRepository.reportDamageIssue(
@@ -282,15 +310,12 @@ class _DamageReportSectionState extends State<DamageReportSection> {
         locationLatitude: widget.currentLatitude,
         locationLongitude: widget.currentLongitude,
       );
-
-      debugPrint('✅ Báo cáo hàng hư hại thành công');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đã báo cáo hàng hư hại thành công! Staff sẽ xử lý yêu cầu hoàn tiền.'),
+            content: Text('Đã báo cáo hàng hư hại thành công! Bạn có thể tiếp tục chuyến đi. Staff sẽ xử lý hoàn tiền sau.'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: Duration(seconds: 4),
           ),
         );
 
@@ -306,7 +331,6 @@ class _DamageReportSectionState extends State<DamageReportSection> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Exception khi báo cáo hàng hư hại: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -695,7 +719,7 @@ class _DamageReportSectionState extends State<DamageReportSection> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Chụp hoặc chọn ảnh hàng hư hại',
+                        'Chụp ảnh hàng hư hại',
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 14,

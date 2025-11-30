@@ -80,7 +80,7 @@ class OrderInfoSection extends StatelessWidget {
                 SizedBox(width: 8.w),
                 Expanded(
                   child: Text(
-                    'Loại hàng: ${order.categoryName}',
+                    'Loại hàng: ${order.categoryDescription ?? order.categoryName}',
                     style: AppTextStyles.bodyMedium,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -100,6 +100,8 @@ class OrderInfoSection extends StatelessWidget {
       case OrderStatus.pending:
       case OrderStatus.processing:
         return Colors.grey;
+      case OrderStatus.cancelled:
+        return AppColors.error;
       case OrderStatus.contractDraft:
       case OrderStatus.contractSigned:
       case OrderStatus.onPlanning:
