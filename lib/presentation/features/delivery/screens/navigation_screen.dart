@@ -31,7 +31,9 @@ import '../widgets/fuel_invoice_upload_sheet.dart';
 import '../../../../domain/entities/issue.dart';
 import '../../../../domain/repositories/issue_repository.dart';
 import '../../../../core/services/notification_service.dart';
+import '../../../../core/services/chat_notification_service.dart';
 import '../../../../data/datasources/vehicle_fuel_consumption_data_source.dart';
+import '../../chat/chat_screen.dart';
 import 'dart:io';
 
 class NavigationScreen extends StatefulWidget {
@@ -3816,6 +3818,37 @@ class _NavigationScreenState extends State<NavigationScreen>
     });
   }
 
+  /// Open chat screen for support
+  void _openChatScreen() {
+    // Mark messages as read when opening chat
+    final chatService = Provider.of<ChatNotificationService>(context, listen: false);
+    chatService.markAsRead();
+    
+    // Pause simulation if it's running
+    if (_isSimulating && !_isPaused) {
+      _pauseSimulation();
+    }
+    
+    // Get order code and vehicle assignment ID from viewModel
+    final orderCode = _viewModel.orderWithDetails?.orderCode;
+    final vehicleAssignmentId = _viewModel.vehicleAssignmentId;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(
+          trackingCode: orderCode,
+          vehicleAssignmentId: vehicleAssignmentId,
+        ),
+      ),
+    ).then((_) {
+      // Auto-resume simulation when returning from chat screen
+      if (mounted) {
+        _autoResumeSimulation();
+      }
+    });
+  }
+
   void _showPickupMessage() {
     showDialog(
       context: context,
@@ -4741,6 +4774,58 @@ class _NavigationScreenState extends State<NavigationScreen>
                                   ? AppColors.success
                                   : Colors.grey,
                             ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Chat support button
+                          Consumer<ChatNotificationService>(
+                            builder: (context, chatService, child) {
+                              return Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  FloatingActionButton(
+                                    onPressed: _openChatScreen,
+                                    backgroundColor: const Color(0xFF1565C0),
+                                    mini: true,
+                                    heroTag: 'chat',
+                                    child: const Icon(
+                                      Icons.chat,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  // Unread badge
+                                  if (chatService.hasUnread)
+                                    Positioned(
+                                      right: -4,
+                                      top: -4,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white, width: 1.5),
+                                        ),
+                                        constraints: const BoxConstraints(
+                                          minWidth: 16,
+                                          minHeight: 16,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            chatService.unreadCount > 9 
+                                                ? '9+' 
+                                                : chatService.unreadCount.toString(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 8),
 

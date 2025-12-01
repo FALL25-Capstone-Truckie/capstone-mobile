@@ -63,6 +63,8 @@ import '../../core/services/vietmap_service.dart';
 import '../../core/services/global_location_manager.dart';
 import '../../core/services/navigation_state_service.dart';
 import '../../core/services/issue_resolution_handler.dart';
+import '../../core/services/chat_notification_service.dart';
+import '../../data/datasources/chat_remote_data_source.dart';
 
 final GetIt getIt = GetIt.instance;
 
@@ -251,6 +253,21 @@ Future<void> setupServiceLocator() async {
     getIt.registerLazySingleton<NotificationRepository>(
       () => NotificationRepositoryImpl(
         remoteDataSource: getIt<NotificationRemoteDataSource>(),
+      ),
+    );
+
+    // Chat data source and notification service
+    getIt.registerLazySingleton<ChatRemoteDataSource>(
+      () => ChatRemoteDataSource(
+        apiClient: getIt<ApiClient>(),
+        baseUrl: ApiConstants.baseUrl,
+        tokenStorage: getIt<TokenStorageService>(),
+      ),
+    );
+
+    getIt.registerLazySingleton<ChatNotificationService>(
+      () => ChatNotificationService(
+        chatDataSource: getIt<ChatRemoteDataSource>(),
       ),
     );
 

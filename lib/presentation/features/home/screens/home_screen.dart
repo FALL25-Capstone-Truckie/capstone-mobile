@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 
 import '../../../../app/di/service_locator.dart';
 import '../../../../core/services/system_ui_service.dart';
+import '../../../../core/services/chat_notification_service.dart';
 import '../../../../core/utils/responsive_extensions.dart';
 import '../../../../presentation/common_widgets/responsive_grid.dart';
 import '../../../../presentation/common_widgets/responsive_layout_builder.dart';
 import '../../../../presentation/common_widgets/skeleton_loader.dart';
 import '../../../../presentation/features/auth/viewmodels/auth_viewmodel.dart';
+import '../../chat/chat_screen.dart';
 import '../widgets/index.dart';
 
 /// Màn hình trang chủ của ứng dụng
@@ -67,12 +69,60 @@ class _HomeScreenState extends State<HomeScreen> {
           centerTitle: true,
           automaticallyImplyLeading: false, // Loại bỏ nút back
           actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () {
-                refreshHomeData();
+            // Chat icon with badge
+            Consumer<ChatNotificationService>(
+              builder: (context, chatService, child) {
+                final unreadCount = chatService.unreadCount;
+                return Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      onPressed: () {
+                        chatService.markAsRead();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ChatScreen(
+                              trackingCode: null,
+                              vehicleAssignmentId: null,
+                              fromTabNavigation: false,
+                            ),
+                          ),
+                        );
+                      },
+                      tooltip: 'Hỗ trợ trực tuyến',
+                    ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Center(
+                            child: Text(
+                              unreadCount > 99 ? '99+' : unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
               },
-              tooltip: 'Làm mới',
             ),
           ],
         ),

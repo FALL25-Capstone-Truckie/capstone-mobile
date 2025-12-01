@@ -85,7 +85,7 @@ class RecentOrdersCard extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(8.r),
           decoration: BoxDecoration(
-            color: statusColor.withOpacity(0.2),
+            color: statusColor.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(Icons.local_shipping, color: statusColor, size: 24.r),
@@ -105,7 +105,7 @@ class RecentOrdersCard extends StatelessWidget {
                       vertical: 4.h,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.2),
+                      color: statusColor.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
