@@ -40,7 +40,7 @@ class _MainScreenState extends State<MainScreen> {
           context,
           listen: false,
         );
-        notificationViewModel.initialize();
+        notificationViewModel.initialize(showLoading: false);
         
         // Initialize ChatNotificationService with driver ID
         final chatNotificationService = Provider.of<ChatNotificationService>(
