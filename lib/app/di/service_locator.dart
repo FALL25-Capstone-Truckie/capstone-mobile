@@ -65,6 +65,8 @@ import '../../core/services/navigation_state_service.dart';
 import '../../core/services/issue_resolution_handler.dart';
 import '../../core/services/chat_notification_service.dart';
 import '../../data/datasources/chat_remote_data_source.dart';
+import '../../data/datasources/dashboard_data_source.dart';
+import '../../presentation/features/home/viewmodels/dashboard_viewmodel.dart';
 
 final GetIt getIt = GetIt.instance;
 
@@ -271,6 +273,11 @@ Future<void> setupServiceLocator() async {
       ),
     );
 
+    // Dashboard data source
+    getIt.registerLazySingleton<DashboardDataSource>(
+      () => DashboardDataSource(apiClient: getIt<ApiClient>()),
+    );
+
     // Use cases
     getIt.registerLazySingleton<LoginUseCase>(
       () => LoginUseCase(getIt<AuthRepository>()),
@@ -403,6 +410,13 @@ Future<void> setupServiceLocator() async {
     // CRITICAL: Không dùng LazySingleton vì khi có 2 giả lập chạy cùng lúc,
     // device 2 sẽ overwrite route segments của device 1
     getIt.registerFactory<NavigationViewModel>(() => NavigationViewModel());
+
+    // Dashboard ViewModel
+    getIt.registerFactory<DashboardViewModel>(
+      () => DashboardViewModel(
+        dashboardDataSource: getIt<DashboardDataSource>(),
+      ),
+    );
   } catch (e) {
     rethrow;
   }
