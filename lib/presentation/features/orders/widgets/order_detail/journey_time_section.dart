@@ -49,27 +49,18 @@ class JourneyTimeSection extends StatelessWidget {
         }
 
         final estimatedStartTime = orderDetail.estimatedStartTime;
-        final startTime = orderDetail.startTime;
-        final estimatedEndTime = orderDetail.estimatedEndTime;
-        final endTime = orderDetail.endTime;
 
-        if (estimatedStartTime == null &&
-            startTime == null &&
-            estimatedEndTime == null &&
-            endTime == null) {
+        if (estimatedStartTime == null) {
           return const SizedBox.shrink();
         }
 
-        return _buildContent(estimatedStartTime, startTime, estimatedEndTime, endTime);
+        return _buildContent(estimatedStartTime);
       },
     );
   }
 
   Widget _buildContent(
     DateTime? estimatedStartTime,
-    DateTime? startTime,
-    DateTime? estimatedEndTime,
-    DateTime? endTime,
   ) {
 
     return Card(
@@ -84,47 +75,12 @@ class JourneyTimeSection extends StatelessWidget {
             SizedBox(height: 12.h),
 
             // Thời gian bắt đầu dự kiến
-            if (estimatedStartTime != null) ...[
-              _buildTimeRow(
-                icon: Icons.access_time,
-                label: 'Thời gian lấy hàng dự kiến:',
-                time: estimatedStartTime,
-                isEstimated: true,
-              ),
-              SizedBox(height: 8.h),
-            ],
-
-            // Thời gian bắt đầu thực tế
-            if (startTime != null) ...[
-              _buildTimeRow(
-                icon: Icons.check_circle,
-                label: 'Thời gian lấy hàng thực tế:',
-                time: startTime,
-                isEstimated: false,
-              ),
-              SizedBox(height: 8.h),
-            ],
-
-            // Thời gian kết thúc dự kiến
-            if (estimatedEndTime != null) ...[
-              _buildTimeRow(
-                icon: Icons.access_time,
-                label: 'Thời gian giao hàng dự kiến:',
-                time: estimatedEndTime,
-                isEstimated: true,
-              ),
-              SizedBox(height: 8.h),
-            ],
-
-            // Thời gian kết thúc thực tế
-            if (endTime != null) ...[
-              _buildTimeRow(
-                icon: Icons.check_circle,
-                label: 'Thời gian giao hàng thực tế:',
-                time: endTime,
-                isEstimated: false,
-              ),
-            ],
+            _buildTimeRow(
+              icon: Icons.access_time,
+              label: 'Thời gian lấy hàng dự kiến:',
+              time: estimatedStartTime ?? DateTime.now(),
+              isEstimated: true,
+            ),
           ],
         ),
       ),

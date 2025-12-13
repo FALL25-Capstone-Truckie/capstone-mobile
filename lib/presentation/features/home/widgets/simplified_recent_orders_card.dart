@@ -38,6 +38,8 @@ class SimplifiedRecentOrdersCard extends StatelessWidget {
           fontSize: 10.sp,
           fontWeight: FontWeight.bold,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -173,16 +175,26 @@ class SimplifiedRecentOrdersCard extends StatelessWidget {
             // Header with order code and status
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  order.orderCode.isNotEmpty ? order.orderCode : order.trackingCode,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    order.orderCode.isNotEmpty ? order.orderCode : order.trackingCode,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                _buildStatusBadge(order.status),
+                SizedBox(width: 8.w),
+                Flexible(
+                  flex: 2,
+                  child: _buildStatusBadge(order.status),
+                ),
               ],
             ),
             SizedBox(height: 8.h),
