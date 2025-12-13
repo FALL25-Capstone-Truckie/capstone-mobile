@@ -7,10 +7,7 @@ class OrderDetailModel extends OrderDetail {
     required super.unit,
     required super.description,
     required super.status,
-    super.startTime,
     super.estimatedStartTime,
-    super.endTime,
-    super.estimatedEndTime,
     required super.createdAt,
     required super.trackingCode,
     OrderSizeModel? super.orderSize,
@@ -24,15 +21,8 @@ class OrderDetailModel extends OrderDetail {
       unit: json['unit'] ?? '',
       description: json['description'] ?? '',
       status: json['status'] ?? '',
-      startTime: json['startTime'] != null
-          ? DateTime.parse(json['startTime'])
-          : null,
       estimatedStartTime: json['estimatedStartTime'] != null
           ? DateTime.parse(json['estimatedStartTime'])
-          : null,
-      endTime: json['endTime'] != null ? DateTime.parse(json['endTime']) : null,
-      estimatedEndTime: json['estimatedEndTime'] != null
-          ? DateTime.parse(json['estimatedEndTime'])
           : null,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
@@ -52,10 +42,7 @@ class OrderDetailModel extends OrderDetail {
       'unit': unit,
       'description': description,
       'status': status,
-      'startTime': startTime?.toIso8601String(),
       'estimatedStartTime': estimatedStartTime?.toIso8601String(),
-      'endTime': endTime?.toIso8601String(),
-      'estimatedEndTime': estimatedEndTime?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'trackingCode': trackingCode,
       'orderSize': orderSize != null

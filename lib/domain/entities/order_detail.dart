@@ -6,10 +6,7 @@ class OrderDetail extends Equatable {
   final String unit;
   final String description;
   final String status;
-  final DateTime? startTime;
   final DateTime? estimatedStartTime;
-  final DateTime? endTime;
-  final DateTime? estimatedEndTime;
   final DateTime createdAt;
   final String trackingCode;
   final OrderSize? orderSize;
@@ -21,10 +18,7 @@ class OrderDetail extends Equatable {
     required this.unit,
     required this.description,
     required this.status,
-    this.startTime,
     this.estimatedStartTime,
-    this.endTime,
-    this.estimatedEndTime,
     required this.createdAt,
     required this.trackingCode,
     this.orderSize,
@@ -38,10 +32,7 @@ class OrderDetail extends Equatable {
     unit,
     description,
     status,
-    startTime,
     estimatedStartTime,
-    endTime,
-    estimatedEndTime,
     createdAt,
     trackingCode,
     orderSize,
