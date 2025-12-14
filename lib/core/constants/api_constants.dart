@@ -5,10 +5,11 @@ class ApiConstants {
 
   /// Base API URL for development (Android Emulator)
   /// NOTE: Already includes /api/v1 prefix - do NOT add /api/v1 to endpoint paths!
-  static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  static const String baseUrl = 'http://14.225.253.8/api/v1';
+  static const String wsBaseUrl = 'ws://14.225.253.8';
 
-  /// WebSocket base URL for development (Android Emulator)
-  static const String wsBaseUrl = 'ws://10.0.2.2:8080';
+  // static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  // static const String wsBaseUrl = 'ws://10.0.2.2:8080';
 
   /// WebSocket endpoint for vehicle tracking notifications
   static const String wsVehicleTrackingEndpoint = '/vehicle-tracking';

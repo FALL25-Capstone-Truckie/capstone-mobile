@@ -70,6 +70,7 @@ import '../../data/datasources/chat_remote_data_source.dart';
 import '../../data/datasources/dashboard_data_source.dart';
 import '../../presentation/features/home/viewmodels/dashboard_viewmodel.dart';
 import '../../presentation/features/onboarding/viewmodels/driver_onboarding_viewmodel.dart';
+import '../../presentation/features/auth/viewmodels/forgot_password_viewmodel.dart';
 
 final GetIt getIt = GetIt.instance;
 
@@ -429,6 +430,13 @@ Future<void> setupServiceLocator() async {
     getIt.registerFactory<DriverOnboardingViewModel>(
       () => DriverOnboardingViewModel(
         repository: getIt<DriverOnboardingRepository>(),
+      ),
+    );
+
+    // Forgot Password ViewModel
+    getIt.registerFactory<ForgotPasswordViewModel>(
+      () => ForgotPasswordViewModel(
+        authDataSource: getIt<AuthDataSourceImpl>(),
       ),
     );
   } catch (e) {

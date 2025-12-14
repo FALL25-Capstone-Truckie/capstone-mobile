@@ -198,13 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
       alignment: Alignment.centerRight,
       child: TextButton(
         onPressed: () {
-          // Quên mật khẩu được xử lý bởi admin
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Vui lòng liên hệ admin để được hỗ trợ'),
-              backgroundColor: AppColors.info,
-            ),
-          );
+          Navigator.of(context).pushNamed('/forgot-password');
         },
         child: Text(
           'Quên mật khẩu?',

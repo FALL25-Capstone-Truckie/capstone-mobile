@@ -8,6 +8,10 @@ import '../presentation/features/account/screens/account_screen.dart';
 import '../presentation/features/account/screens/change_password_screen.dart';
 import '../presentation/features/account/screens/edit_driver_info_screen.dart';
 import '../presentation/features/auth/screens/login_screen.dart';
+import '../presentation/features/auth/screens/forgot_password_screen.dart';
+import '../presentation/features/auth/viewmodels/forgot_password_viewmodel.dart';
+import 'package:provider/provider.dart';
+import 'di/service_locator.dart';
 import '../presentation/features/delivery/screens/active_delivery_screen.dart';
 import '../presentation/features/delivery/screens/delivery_map_screen.dart';
 import '../presentation/features/delivery/screens/navigation_screen.dart';
@@ -30,6 +34,7 @@ class AppRoutes {
   static const String root = '/';
   static const String splash = '/splash';
   static const String login = '/login';
+  static const String forgotPassword = '/forgot-password';
   static const String driverOnboarding = '/driver-onboarding';
   static const String main = '/main';
   static const String home = '/home';
@@ -89,6 +94,14 @@ class AppRoutes {
       case login:
         return MaterialPageRoute(
           builder: (_) => const ResponsiveWrapper(child: LoginScreen()),
+        );
+
+      case forgotPassword:
+        return MaterialPageRoute(
+          builder: (_) => ChangeNotifierProvider(
+            create: (_) => getIt<ForgotPasswordViewModel>(),
+            child: const ResponsiveWrapper(child: ForgotPasswordScreen()),
+          ),
         );
 
       case driverOnboarding:

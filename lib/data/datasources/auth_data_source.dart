@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/errors/exceptions.dart';
@@ -9,7 +8,6 @@ import '../../core/services/token_storage_service.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/entities/role.dart';
 import '../models/auth_response_model.dart';
-import '../models/token_response_model.dart';
 import '../models/user_model.dart';
 import '../models/role_model.dart';
 
@@ -41,6 +39,20 @@ abstract class AuthDataSource {
     String oldPassword,
     String newPassword,
     String confirmNewPassword,
+  );
+
+  /// Gửi OTP quên mật khẩu
+  Future<bool> sendForgotPasswordOtp(String email);
+
+  /// Xác thực OTP quên mật khẩu
+  Future<String?> verifyForgotPasswordOtp(String email, String otp);
+
+  /// Đặt lại mật khẩu
+  Future<bool> resetPassword(
+    String email,
+    String resetToken,
+    String newPassword,
+    String confirmPassword,
   );
 }
 
@@ -375,6 +387,104 @@ class AuthDataSourceImpl implements AuthDataSource {
       throw CacheException(
         message: 'Xóa thông tin người dùng thất bại: ${e.toString()}',
       );
+    }
+  }
+
+  @override
+  Future<bool> sendForgotPasswordOtp(String email) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '/auths/forgot-password/send-otp',
+        data: {'email': email},
+      );
+
+      if (response.data['success'] == true) {
+        return true;
+      } else {
+        throw ServerException(
+          message: response.data['message'] ?? 'Không thể gửi mã OTP',
+        );
+      }
+    } on DioException catch (e) {
+      throw ServerException(
+        message: e.response?.data['message'] ?? 'Không thể gửi mã OTP',
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ServerException) {
+        rethrow;
+      }
+      throw ServerException(message: 'Không thể gửi mã OTP');
+    }
+  }
+
+  @override
+  Future<String?> verifyForgotPasswordOtp(String email, String otp) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '/auths/forgot-password/verify-otp',
+        data: {
+          'email': email,
+          'otp': otp,
+        },
+      );
+
+      if (response.data['success'] == true && response.data['data'] != null) {
+        final data = response.data['data'];
+        return data['resetToken'] as String?;
+      } else {
+        throw ServerException(
+          message: response.data['message'] ?? 'Mã OTP không hợp lệ',
+        );
+      }
+    } on DioException catch (e) {
+      throw ServerException(
+        message: e.response?.data['message'] ?? 'Mã OTP không hợp lệ hoặc đã hết hạn',
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ServerException) {
+        rethrow;
+      }
+      throw ServerException(message: 'Xác thực OTP thất bại');
+    }
+  }
+
+  @override
+  Future<bool> resetPassword(
+    String email,
+    String resetToken,
+    String newPassword,
+    String confirmPassword,
+  ) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '/auths/forgot-password/reset-password',
+        data: {
+          'email': email,
+          'resetToken': resetToken,
+          'newPassword': newPassword,
+          'confirmPassword': confirmPassword,
+        },
+      );
+
+      if (response.data['success'] == true) {
+        return true;
+      } else {
+        throw ServerException(
+          message: response.data['message'] ?? 'Đổi mật khẩu thất bại',
+        );
+      }
+    } on DioException catch (e) {
+      throw ServerException(
+        message: e.response?.data['message'] ?? 'Đổi mật khẩu thất bại',
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ServerException) {
+        rethrow;
+      }
+      throw ServerException(message: 'Đổi mật khẩu thất bại');
     }
   }
 }
