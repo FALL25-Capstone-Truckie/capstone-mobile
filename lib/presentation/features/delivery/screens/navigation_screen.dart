@@ -87,7 +87,7 @@ class _NavigationScreenState extends State<NavigationScreen>
   
   // Off-route simulation (for testing off-route detection)
   // Offset perpendicular to route direction (in meters) - guaranteed to be off-route
-  static const double _offRouteDistanceMeters = 250.0; // 250m perpendicular offset (> 100m threshold)
+  static const double _offRouteDistanceMeters = 1000.0; // 1000m perpendicular offset (> 30m threshold)
 
   int _cameraUpdateCounter = 0;
   final int _cameraUpdateFrequency = 1; // Update camera every frame
@@ -297,8 +297,16 @@ class _NavigationScreenState extends State<NavigationScreen>
               description: 'Seal replacement',
               status: IssueStatus.inProgress,
               issueCategory: IssueCategory.sealReplacement,
-              oldSeal: Seal.fromJson(oldSeal),
-              newSeal: Seal.fromJson(newSeal),
+              oldSeal: Seal(
+                id: oldSeal['id'] as String? ?? '',
+                sealCode: oldSeal['sealCode'] as String,
+                status: SealStatus.removed,
+              ),
+              newSeal: Seal(
+                id: newSeal['id'] as String? ?? '',
+                sealCode: newSeal['sealCode'] as String,
+                status: SealStatus.active,
+              ),
               staffId: staff?['id'] as String?,
             );
             _showConfirmSealSheet(issue);

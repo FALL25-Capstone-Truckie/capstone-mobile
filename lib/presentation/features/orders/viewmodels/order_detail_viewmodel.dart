@@ -49,6 +49,7 @@ class OrderDetailViewModel extends BaseViewModel {
   bool _isUploadingOdometer = false;
   String _odometerUploadError = '';
   String? _fuelConsumptionId;
+  double? _odometerReadingAtStart; // Track initial odometer reading
   double? _odometerReadingAtEnd; // Track if final odometer has been uploaded
   
   // Concurrent operation lock to prevent duplicate start
@@ -70,6 +71,7 @@ class OrderDetailViewModel extends BaseViewModel {
   String get photoUploadError => _photoUploadError;
   bool get isUploadingOdometer => _isUploadingOdometer;
   String get odometerUploadError => _odometerUploadError;
+  double? get odometerReadingAtStart => _odometerReadingAtStart;
   double? get odometerReadingAtEnd => _odometerReadingAtEnd;
 
   OrderDetailViewModel({
@@ -774,6 +776,13 @@ class OrderDetailViewModel extends BaseViewModel {
       (response) {
         if (response['success'] == true && response['data'] != null) {
           _fuelConsumptionId = response['data']['id'];
+          // Load initial odometer reading
+          final odometerStart = response['data']['odometerReadingAtStart'];
+          if (odometerStart != null) {
+            _odometerReadingAtStart = (odometerStart is num) ? odometerStart.toDouble() : null;
+          } else {
+            _odometerReadingAtStart = null;
+          }
           // Check if final odometer reading has been uploaded
           final odometerEnd = response['data']['odometerReadingAtEnd'];
           if (odometerEnd != null) {
@@ -799,6 +808,13 @@ class OrderDetailViewModel extends BaseViewModel {
 
     if (_fuelConsumptionId == null) {
       _odometerUploadError = 'Không tìm thấy thông tin nhiên liệu';
+      notifyListeners();
+      return false;
+    }
+
+    // Validate: Final odometer must be greater than initial odometer
+    if (_odometerReadingAtStart != null && odometerReading <= _odometerReadingAtStart!) {
+      _odometerUploadError = 'Số km cuối (${odometerReading.toStringAsFixed(1)}) phải lớn hơn số km đầu (${_odometerReadingAtStart!.toStringAsFixed(1)})';
       notifyListeners();
       return false;
     }

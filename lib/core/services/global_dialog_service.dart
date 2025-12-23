@@ -873,19 +873,31 @@ class GlobalDialogService {
     
     if (issueId == null || oldSeal == null || newSeal == null) {
       print('⚠️ [GlobalDialogService] Missing seal data');
+      print('   issueId: $issueId');
+      print('   oldSeal: $oldSeal');
+      print('   newSeal: $newSeal');
       return;
     }
 
     if (!context.mounted) return;
 
-    // Build Issue object
+    // Build Issue object with minimal Seal data
+    // Backend only sends sealCode, so we construct Seal objects with required fields
     final issue = Issue(
       id: issueId,
       description: 'Seal replacement',
       status: IssueStatus.inProgress,
       issueCategory: IssueCategory.sealReplacement,
-      oldSeal: Seal.fromJson(oldSeal),
-      newSeal: Seal.fromJson(newSeal),
+      oldSeal: Seal(
+        id: oldSeal['id'] as String? ?? '', // Empty string if not provided
+        sealCode: oldSeal['sealCode'] as String,
+        status: SealStatus.removed, // Old seal is removed
+      ),
+      newSeal: Seal(
+        id: newSeal['id'] as String? ?? '', // Empty string if not provided
+        sealCode: newSeal['sealCode'] as String,
+        status: SealStatus.active, // New seal is active, waiting for attachment
+      ),
       staffId: staff?['id'] as String?,
     );
 

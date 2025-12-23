@@ -414,11 +414,15 @@ class NotificationService {
       
       switch (type) {
         case GlobalDialogType.returnPaymentSuccess:
+          // ✅ Include issue data with seal information (if available)
+          // Backend sends seal data after customer payment success for return shipping
+          final issue = notification['issue'] as Map<String, dynamic>?;
           data = {
             'issueId': notification['issueId'],
             'vehicleAssignmentId': notification['vehicleAssignmentId'],
             'orderId': notification['orderId'],
             'returnJourneyId': notification['returnJourneyId'],
+            'issue': issue, // Contains oldSeal and newSeal if staff already assigned new seal
             'timestamp': notification['timestamp'] ?? DateTime.now().toIso8601String(),
           };
           globalDialogService.handleReturnPaymentSuccess(data);
@@ -436,10 +440,20 @@ class NotificationService {
           
         case GlobalDialogType.sealAssignment:
           final issue = notification['issue'] as Map<String, dynamic>?;
+          // Backend sends oldSealCode and newSealCode as strings
+          // Convert to seal objects for dialog compatibility
+          Map<String, dynamic>? oldSeal;
+          Map<String, dynamic>? newSeal;
+          if (issue?['oldSealCode'] != null) {
+            oldSeal = {'sealCode': issue!['oldSealCode']};
+          }
+          if (issue?['newSealCode'] != null) {
+            newSeal = {'sealCode': issue!['newSealCode']};
+          }
           data = {
             'issueId': issue?['id'],
-            'oldSeal': issue?['oldSeal'],
-            'newSeal': issue?['newSeal'],
+            'oldSeal': oldSeal,
+            'newSeal': newSeal,
             'staff': issue?['staff'],
             'timestamp': notification['timestamp'] ?? DateTime.now().toIso8601String(),
           };
