@@ -4297,13 +4297,13 @@ class _NavigationScreenState extends State<NavigationScreen>
             ),
 
             
-            // 🆕 Pending Seal Replacement Banner
-            if (_pendingSealReplacements.isNotEmpty)
-              PendingSealReplacementBanner(
-                issue: _pendingSealReplacements.first,
-                onTap: () =>
-                    _showConfirmSealSheet(_pendingSealReplacements.first),
-              ),
+            // 🆕 Pending Seal Replacement Banner - COMMENTED OUT
+            // if (_pendingSealReplacements.isNotEmpty)
+            //   PendingSealReplacementBanner(
+            //     issue: _pendingSealReplacements.first,
+            //     onTap: () =>
+            //         _showConfirmSealSheet(_pendingSealReplacements.first),
+            //   ),
 
             // Loading indicator cho pending seals
             // if (_isLoadingPendingSeals)

@@ -278,7 +278,7 @@ class _IssueReportScreenState extends State<IssueReportScreen> {
       buttonText = 'Vui lòng thêm ảnh xác nhận giao hàng';
     } else {
       int totalCount = _selectedDamageIds.length + _selectedRejectionIds.length;
-      buttonText = 'Xác nhận báo cáo ($totalCount kiện)';
+      buttonText = 'Xác nhận báo cáo';
     }
 
     final bool isValid = canSubmit &&
