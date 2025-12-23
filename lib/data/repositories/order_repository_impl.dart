@@ -30,21 +30,19 @@ class OrderRepositoryImpl implements OrderRepository {
         '/orders/get-list-order-for-driver',
       );
 
-      if (response.data['success'] == true && response.data['data'] != null) {
-        final List<dynamic> ordersJson = response.data['data'];
+      if (response.data['success'] == true) {
+        // Handle null or empty data - backend now returns empty list instead of error
+        final dynamic dataValue = response.data['data'];
+        if (dataValue == null) {
+          return const Right([]);
+        }
+
+        final List<dynamic> ordersJson = dataValue as List<dynamic>;
         final List<Order> orders = ordersJson
             .map((orderJson) => OrderModel.fromJson(orderJson))
             .toList();
         return Right(orders);
       } else {
-        // Check if this is a "Not found" response for no orders
-        if (response.statusCode == 400 &&
-            response.data['message'] != null &&
-            response.data['message'].toString().contains('Not found')) {
-          // Return an empty list instead of an error
-          return const Right([]);
-        }
-
         return Left(
           ServerFailure(
             message: response.data['message'] ?? 'Lỗi khi lấy danh sách đơn hàng',
@@ -52,16 +50,10 @@ class OrderRepositoryImpl implements OrderRepository {
         );
       }
     } on DioException catch (e) {
-      // Khi Dio ném lỗi 400 với message "Not found" (không có đơn hàng),
-      // coi đây là trường hợp hợp lệ và trả về danh sách rỗng.
       final statusCode = e.response?.statusCode;
       final message = e.response?.data is Map
           ? (e.response!.data['message']?.toString() ?? '')
           : (e.message ?? '');
-
-      if (statusCode == 400 && message.contains('Not found')) {
-        return const Right([]);
-      }
 
       return Left(
         ServerFailure(
@@ -72,11 +64,6 @@ class OrderRepositoryImpl implements OrderRepository {
         ),
       );
     } on ServerException catch (e) {
-      // Check if this is a "Not found" exception for no orders
-      if (e.statusCode == 400 && e.message.contains('Not found')) {
-        // Return an empty list instead of an error
-        return const Right([]);
-      }
       return Left(ServerFailure(message: e.message));
     } catch (e) {
       return Left(ServerFailure(message: e.toString()));

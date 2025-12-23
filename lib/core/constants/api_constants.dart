@@ -5,9 +5,16 @@ class ApiConstants {
 
   /// Base API URL for development (Android Emulator)
   /// NOTE: Already includes /api/v1 prefix - do NOT add /api/v1 to endpoint paths!
+  
+  // Production (HTTPS requires WSS for WebSocket)
   static const String baseUrl = 'https://api.truckie.io.vn/api/v1';
-  static const String wsBaseUrl = 'ws://api.truckie.io.vn';
+  static const String wsBaseUrl = 'wss://api.truckie.io.vn';
 
+  // IP Server (HTTP uses WS for WebSocket)
+//   static const String baseUrl = 'http://14.225.253.8/api/v1';
+//   static const String wsBaseUrl = 'ws://14.225.253.8';
+
+  // Local development (Android Emulator)
 //   static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
 //   static const String wsBaseUrl = 'ws://10.0.2.2:8080';
 

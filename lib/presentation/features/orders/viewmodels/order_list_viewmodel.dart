@@ -30,6 +30,14 @@ class OrderListViewModel extends BaseViewModel {
 
     result.fold(
       (failure) async {
+        // Check if error is "Cannot found orders" - treat as empty list, not error
+        if (failure.message.contains('Cannot found orders')) {
+          _state = OrderListState.loaded;
+          _orders = [];
+          notifyListeners();
+          return;
+        }
+
         _state = OrderListState.error;
         _errorMessage = failure.message;
 
@@ -70,6 +78,14 @@ class OrderListViewModel extends BaseViewModel {
 
     result.fold(
       (failure) async {
+        // Check if error is "Cannot found orders" - treat as empty list, not error
+        if (failure.message.contains('Cannot found orders')) {
+          _state = OrderListState.loaded;
+          _orders = [];
+          notifyListeners();
+          return;
+        }
+
         _state = OrderListState.error;
         _errorMessage = failure.message;
 
@@ -100,6 +116,14 @@ class OrderListViewModel extends BaseViewModel {
 
     result.fold(
       (failure) async {
+        // Check if error is "Cannot found orders" - treat as empty list, not error
+        if (failure.message.contains('Cannot found orders')) {
+          _state = OrderListState.loaded;
+          _orders = [];
+          notifyListeners();
+          return;
+        }
+
         _state = OrderListState.error;
         _errorMessage = failure.message;
         notifyListeners();
